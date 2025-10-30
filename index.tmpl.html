@@ -1,0 +1,104 @@
+  <!DOCTYPE html>
+  <html lang="fr">
+   <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <meta property="og:title" content="Cadeaux de noël 2025"/>
+    <meta property="og:description" content="À qui offrir le cadeau de noël?"/>
+
+    <meta property="og:image" content="/static/favicon.ico" />
+
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <style>
+h1 {
+ display: flex;
+ justify-content: center;
+}
+button {
+ font-size: 1em;
+ margin-left: 1em;
+ margin-right: 1em;
+}
+#buttons {
+ display: flex;
+ justify-content: center;
+ align-items: center;
+}
+
+body {
+ display: flex;
+ justify-content: center;
+ align-items: center;
+ height: 50vh;
+}
+    </style>
+    <script>
+let people =
+[{{ range . }}
+ {"name": "{{.Name}}", "other": {{.Other}}}, {{ end }}
+];
+
+function clickButton(button) {
+ let name = button.innerText;
+ let person = null;
+ let person_index = 0;
+ for(; person_index < people.length; person_index += 1)
+ {
+  if(people[person_index].name === name)
+  {
+   person = people[person_index];
+   break;
+  }
+ }
+
+ fetch('/person/', {
+  method: 'POST',
+  headers:
+  {
+   'Content-Type': 'application/x-www-form-urlencoded'
+  },
+  body: "name=" + person.name
+ })
+ .then(function(response) {
+  response.text().
+   then(function(text_response) {
+    if(text_response === 'ok') {
+     window.location.reload();
+    }
+   })
+  })
+ .catch(error => console.error('Error:', error));
+
+ let other_person = people[person.other];
+ document.body.innerHTML = "<h1>Tu as: " + other_person.name + "</h1>";
+}
+
+window.onload = function() {
+ let buttons = document.querySelectorAll("button");
+
+ for(let index = 0; index < buttons.length; index += 1)
+ {
+  let button = buttons[index];
+  button.addEventListener("click", function(event) {
+   event.preventDefault();
+   clickButton(button);
+  });
+ }
+
+};
+    </script>
+
+   </head>
+   <body>
+    <div>
+     <h1>Qui es-tu?</h1>
+     <div id="buttons">
+     {{ range . }}
+     <button>{{ .Name }}</button>
+     {{ end }}
+     </div>
+    </div>
+   </body>
+  </html>
