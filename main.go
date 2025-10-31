@@ -8,11 +8,18 @@ import "html/template"
 import "strings"
 import _ "embed"
 
-//- Types
+// - Types
 type Person struct {
-	Name   string
-	Other  int
+	Name  string
+	Other int
 }
+
+type PageData struct {
+ People []Person
+ Seed int64
+}
+
+var DEBUG = true
 
 //- Globals
 
@@ -33,37 +40,52 @@ var people = []Person{
 }
 var people_count = len(people)
 
-//- Main
-func main() {
- var seed int64
- seed = rand.Int63()
- seed = 5642410750512497522
- fmt.Println("seed:", seed)
+func TemplateToString(page_html string, people []Person, seed int64) string {
+			var buf strings.Builder
+			template_response, err := template.New("roulette").Parse(page_html)
+			if err != nil {
+				fmt.Println(err)
+			}
+   err = template_response.ExecuteTemplate(&buf, "roulette", PageData{people, seed})
+   if err != nil {
+    fmt.Println(err)
+   }
+			response := buf.String()
 
- src := rand.NewSource(seed)
- r := rand.New(src)
+   return response
+}
+
+// - Main
+func main() {
+	var seed int64
+	seed = rand.Int63()
+	seed = 1924480304604450476
+	fmt.Println("seed:", seed)
+
+	src := rand.NewSource(seed)
+	r := rand.New(src)
 	rand.Seed(seed)
 
- var list []int
- correct := false
- for !correct {
-  list = r.Perm(people_count)
+	var list []int
+	correct := false
+	for !correct {
+		list = r.Perm(people_count)
 
-  correct = true
-  for i, v := range list {
-   if(v == i) {
-    fmt.Println("incorrect, need to reshuffle")
-    correct = false
-    break
-   }
-  }
- }
+		correct = true
+		for i, v := range list {
+			if v == i {
+				fmt.Println("incorrect, need to reshuffle")
+				correct = false
+				break
+			}
+		}
+	}
 
- for i, v := range list {
-  people[i].Other = v
- }
- 
- http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./assets"))))
+	for i, v := range list {
+		people[i].Other = v
+	}
+
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./assets"))))
 
 	http.HandleFunc("/person/", func(writer http.ResponseWriter, request *http.Request) {
 		name := request.FormValue("name")
@@ -82,23 +104,25 @@ func main() {
 		}
 	})
 
- // Execute the template before-hand since the contents won't change.
- var buf strings.Builder
- template_response, err := template.New("roulette").Parse(page_html)
- if err != nil {
-  fmt.Println(err)
- }
- template_response.ExecuteTemplate(&buf, "roulette", people)
- response := buf.String()
+	// Execute the template before-hand since the contents won't change.
+
+	response := TemplateToString(page_html, people, seed);
 
 	http.HandleFunc("/", func(writer http.ResponseWriter, request *http.Request) {
+		if DEBUG {
+   response = TemplateToString(page_html, people, seed);
+		}
   fmt.Fprint(writer, response)
 	})
 
-	address := "localhost:15118"
+	var address string
+	if DEBUG {
+		address = "0.0.0.0:15118"
+	} else {
+		address = "localhost:15118"
+	}
 	fmt.Printf("Listening on http://%s\n", address)
-	err = http.ListenAndServe(address, nil)
-	if err != nil {
+ if err := http.ListenAndServe(address, nil); err != nil {
 		panic(err)
 	}
 
