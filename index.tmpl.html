@@ -16,15 +16,18 @@ h1 {
  display: flex;
  justify-content: center;
 }
+
 button {
  font-size: 1em;
- margin-left: 1em;
- margin-right: 1em;
 }
+
 #buttons {
- display: flex;
- justify-content: center;
- align-items: center;
+  margin: 1.5em;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1em;
 }
 
 body {
@@ -33,72 +36,114 @@ body {
  align-items: center;
  height: 50vh;
 }
+
+span#name {
+ color: blue;
+}
+
+
     </style>
     <script>
 let people =
-[{{ range . }}
+[{{ range .People }}
  {"name": "{{.Name}}", "other": {{.Other}}}, {{ end }}
 ];
 
-function clickButton(button) {
- let name = button.innerText;
- let person = null;
- let person_index = 0;
- for(; person_index < people.length; person_index += 1)
- {
-  if(people[person_index].name === name)
-  {
-   person = people[person_index];
-   break;
-  }
- }
+let page1_html = `
+<div>
+ <h1>Qui es-tu?</h1>
+ <div id="buttons">
+ {{ range .People }}
+ <button>{{ .Name }}</button>
+ {{ end }}
+ </div>
+</div>
+`;
 
- fetch('/person/', {
-  method: 'POST',
-  headers:
-  {
-   'Content-Type': 'application/x-www-form-urlencoded'
-  },
-  body: "name=" + person.name
- })
- .then(function(response) {
-  response.text().
-   then(function(text_response) {
-    if(text_response === 'ok') {
-     window.location.reload();
-    }
-   })
-  })
- .catch(error => console.error('Error:', error));
+let local_storage_key = "clicked_{{.Seed}}";
 
- let other_person = people[person.other];
- document.body.innerHTML = "<h1>Tu as: " + other_person.name + "</h1>";
-}
-
-window.onload = function() {
+function setPage1() {
+ document.body.innerHTML = page1_html;
  let buttons = document.querySelectorAll("button");
-
  for(let index = 0; index < buttons.length; index += 1)
  {
   let button = buttons[index];
   button.addEventListener("click", function(event) {
    event.preventDefault();
-   clickButton(button);
-  });
- }
 
+   let name = button.innerText;
+   let person = null;
+   for(let person_index = 0; person_index < people.length; person_index += 1)
+   {
+    if(people[person_index].name === name)
+    {
+     person = people[person_index];
+     break;
+    }
+   }
+
+   {{ if false }}
+   fetch('/person/', {
+    method: 'POST',
+    headers:
+    {
+     'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: "name=" + person.name
+   })
+   .then(function(response) {
+    response.text().
+     then(function(text_response) {
+      if(text_response !== 'ok') {
+       console.log("Error");
+      }
+     })
+    })
+   .catch(error => console.error('Error:', error));
+   {{ end }}
+
+   document.body.innerHTML = `
+    <h1>Tu es bien ${person.name}?</h1>
+    <div id="buttons">
+     <button id="yes">Oui</button>
+     <button id="no">Non</button>
+    </div>`;
+
+   let yes_button = document.getElementById("yes");
+   let no_button = document.getElementById("no");
+
+   yes_button.addEventListener("click", function(event) {
+    event.preventDefault();
+    let other_person = people[person.other];
+    document.body.innerHTML = `<h1>Tu as&nbsp;<span id="name">${other_person.name}</span>.</h1>`;
+    localStorage.setItem(local_storage_key, other_person.name);
+   });
+
+   no_button.addEventListener("click", function(event) {
+    event.preventDefault();
+    setPage1();
+   });
+
+  }); // button click even listener
+ }
+}
+
+window.onload = function() {
+ let clicked = localStorage.getItem(local_storage_key);
+ if(!clicked)
+ {
+  setPage1();
+ }
+ else
+ {
+  document.body.innerHTML = `<h1>Tu as déjà choisi.</h1>`;
+ }
 };
+
     </script>
 
    </head>
    <body>
-    <div>
-     <h1>Qui es-tu?</h1>
-     <div id="buttons">
-     {{ range . }}
-     <button>{{ .Name }}</button>
-     {{ end }}
-     </div>
-    </div>
    </body>
+
   </html>
