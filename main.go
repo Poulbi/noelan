@@ -1,32 +1,76 @@
+// Documentation
+//
+// Secret santa app that's random so people don't have to worry about the picking process.
+// No emails or login, just use the domain.
+//
+// Run it with `go run .`
+//
+//
+// TODOs
+//
+// TODO: Command line flags
+// - serve to serve it
+// - unpick to unpick all
+// - editor (to have one where i can edit the gob file manually)
+//
+// TODO: Make it safer by doing this.
+// 1. Have no ID
+// 2. Choose name
+// 3. Get (and store in local storage)
+// -  other person name
+// -  token to make requests
+// -  this name's id
+// 4. Set this ID picked on server
+//
+// -> This data is used to know if the person has picked or not.
+//
+// 1. Already have an ID (in local storage)
+// 2. Get
+// - Wishlists (for sync)
+
 package main
 
 //- Libraries
-import "fmt"
-import "net/http"
-import "math/rand"
-import "html/template"
-import "strings"
-import _ "embed"
+import (
+	"encoding/gob"
+	"errors"
+	"fmt"
+	"html/template"
+	"io"
+	"math/rand"
+	"net/http"
+	"os/signal"
+	"strings"
+
+	_ "embed"
+	"log"
+	"os"
+)
 
 // - Types
 type Person struct {
-	Name  string
-	Other int
+	Name      string
+	Other     int
+	Wishlist  string
+	HasPicked bool
+	Token     int64
 }
 
 type PageData struct {
- People []Person
- Seed int64
+	People []Person
+	KeyID  int64
 }
 
-var DEBUG = true
-
 //- Globals
+
+var DEBUG = true
+var local_storage_key_id int64
 
 //go:embed index.tmpl.html
 var page_html string
 
-var people = []Person{
+// This is the default list when it is not decoded from the data file see below
+var global_people = []Person{
 	{Name: "Nawel"},
 	{Name: "Tobias"},
 	{Name: "Luca"},
@@ -38,81 +82,228 @@ var people = []Person{
 	{Name: "Yves"},
 	{Name: "Marthe"},
 }
-var people_count = len(people)
+
+var global_version int = 1
+
+var data_file_name string = "people.gob"
+
+func DecodeData(logger *log.Logger, file_name string) {
+	file, err := os.Open(file_name)
+	if errors.Is(err, os.ErrNotExist) {
+		logger.Println("Datafile does not exist.  Creating", file_name)
+		file, err = os.Create(file_name)
+		if err != nil {
+			logger.Fatalln(err)
+		}
+
+	} else if err != nil {
+		logger.Fatalln(err)
+	} else {
+		dec := gob.NewDecoder(file)
+
+		// Check the version
+		var version int
+		if err := dec.Decode(&version); err != io.EOF && err != nil {
+			logger.Fatalln(err)
+		}
+		if version != global_version {
+			logger.Fatalf("Version mismatch for datafile@%s != package@%s\n", version, global_version)
+		}
+
+		// Decode the data and import it into global_people
+		if err := dec.Decode(&global_people); err != nil && err != io.EOF {
+			logger.Fatalln(err)
+		}
+
+		logger.Printf("Imported %d people.\n", len(global_people))
+
+		if err := file.Close(); err != nil {
+			logger.Fatalln(err)
+		}
+	}
+}
+
+func EncodeData(logger *log.Logger, file_name string) {
+	file, err := os.Create(file_name)
+	if err != nil {
+		logger.Fatalln(err)
+	}
+	defer file.Close()
+
+	enc := gob.NewEncoder(file)
+	if err := enc.Encode(global_version); err != nil {
+		logger.Fatalln(err)
+	}
+	if err := enc.Encode(global_people); err != nil {
+		logger.Fatalln(err)
+	}
+}
+
+func (person Person) String() string {
+	var digits string
+	if person.Token > 99999 {
+		digits = fmt.Sprintf("%d", person.Token)[:6]
+	} else {
+		digits = fmt.Sprintf("%d", person.Token)
+	}
+
+	return fmt.Sprintf("%s_%s(%t)\n%s\n",
+		person.Name, digits, person.HasPicked, person.Wishlist)
+}
 
 func TemplateToString(page_html string, people []Person, seed int64) string {
-			var buf strings.Builder
-			template_response, err := template.New("roulette").Parse(page_html)
-			if err != nil {
-				fmt.Println(err)
-			}
-   err = template_response.ExecuteTemplate(&buf, "roulette", PageData{people, seed})
-   if err != nil {
-    fmt.Println(err)
-   }
-			response := buf.String()
+	var buf strings.Builder
+	template_response, err := template.New("roulette").Parse(page_html)
+	if err != nil {
+		fmt.Println(err)
+	}
+	err = template_response.ExecuteTemplate(&buf, "roulette", PageData{people, local_storage_key_id})
+	if err != nil {
+		fmt.Println(err)
+	}
+	response := buf.String()
 
-   return response
+	return response
+}
+
+func FindPersonByName(people []Person, name string) (bool, *Person) {
+	var found_person *Person
+	var found bool
+
+	for index, value := range people {
+		if name == value.Name {
+			found_person = &people[index]
+			found = true
+			break
+		}
+	}
+
+	return found, found_person
+}
+
+func FindPersonByOtherName(people []Person, name string) (bool, *Person) {
+	var found_person *Person
+	var found bool
+
+	for index, person := range people {
+		if name == people[person.Other].Name {
+			found = true
+			found_person = &people[index]
+			break
+		}
+	}
+
+	return found, found_person
 }
 
 // - Main
 func main() {
-	var seed int64
-	seed = rand.Int63()
-	seed = 1924480304604450476
-	fmt.Println("seed:", seed)
+	logger := log.New(os.Stdout, "[noel] ", log.Ldate|log.Ltime)
 
-	src := rand.NewSource(seed)
-	r := rand.New(src)
+	seed := rand.Int63()
+	seed = 1623876946084255669
+	logger.Println("seed:", seed)
+	source := rand.NewSource(seed)
+	seeded_rand := rand.New(source)
 	rand.Seed(seed)
 
+	// Get a shuffled list that has following constaints
+	// 1. One person cannot choose itself
+	// 2. Every person has picked another person
 	var list []int
 	correct := false
 	for !correct {
-		list = r.Perm(people_count)
+		list = seeded_rand.Perm(len(global_people))
 
 		correct = true
-		for i, v := range list {
-			if v == i {
-				fmt.Println("incorrect, need to reshuffle")
+		for i, version := range list {
+			if version == i {
+				logger.Println("incorrect, need to reshuffle")
 				correct = false
 				break
 			}
 		}
 	}
 
-	for i, v := range list {
-		people[i].Other = v
+	local_storage_key_id = seeded_rand.Int63()
+
+	// Initialize people
+	for index, value := range list {
+		global_people[index].Other = value
+		global_people[index].Token = seeded_rand.Int63()
 	}
+
+	DecodeData(logger, data_file_name)
+
+	fmt.Println(global_people)
+
+	go func() {
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt)
+		<-c
+
+		EncodeData(logger, data_file_name)
+
+		logger.Println("data saved.")
+		os.Exit(0)
+	}()
+
+	defer EncodeData(logger, data_file_name)
 
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./assets"))))
 
-	http.HandleFunc("/person/", func(writer http.ResponseWriter, request *http.Request) {
-		name := request.FormValue("name")
-
-		var found bool
-		for _, value := range people {
-			if name == value.Name {
-				found = true
-			}
+	http.HandleFunc("/unpickall/", func(writer http.ResponseWriter, request *http.Request) {
+		for index := range global_people {
+			global_people[index].HasPicked = false
 		}
+		fmt.Fprintln(writer, "Done.")
+	})
 
-		if found {
-			fmt.Fprintln(writer, "ok")
-		} else {
-			fmt.Fprintln(writer, "error")
+	http.HandleFunc("/list/", func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodPost {
+			name := request.FormValue("name")
+			text := request.FormValue("text")
+
+			logger.Println("Edit wishlist of", name)
+			found, person := FindPersonByName(global_people, name)
+
+			if found {
+				person.Wishlist = text
+				person.HasPicked = true
+				logger.Println(global_people)
+
+				fmt.Fprintln(writer, "ok")
+
+			} else {
+				fmt.Fprintln(writer, "error")
+			}
+		} else if request.Method == http.MethodGet {
+			params := request.URL.Query()
+			name := params.Get("name")
+
+			found, picking_person := FindPersonByOtherName(global_people, name)
+			if found {
+				picked_person := &global_people[picking_person.Other]
+				fmt.Fprintln(writer, picked_person.Wishlist)
+			} else {
+				fmt.Fprintln(writer, "error")
+			}
 		}
 	})
 
 	// Execute the template before-hand since the contents won't change.
-
-	response := TemplateToString(page_html, people, seed);
-
+	response := TemplateToString(page_html, global_people, seed)
 	http.HandleFunc("/", func(writer http.ResponseWriter, request *http.Request) {
 		if DEBUG {
-   response = TemplateToString(page_html, people, seed);
+			buffer, err := os.ReadFile("index.tmpl.html")
+			if err != nil {
+				fmt.Print(err)
+			}
+
+			file_contents := string(buffer)
+			response = TemplateToString(file_contents, global_people, seed)
 		}
-  fmt.Fprint(writer, response)
+		fmt.Fprint(writer, response)
 	})
 
 	var address string
@@ -121,8 +312,8 @@ func main() {
 	} else {
 		address = "localhost:15118"
 	}
-	fmt.Printf("Listening on http://%s\n", address)
- if err := http.ListenAndServe(address, nil); err != nil {
+	logger.Printf("Listening on http://%s\n", address)
+	if err := http.ListenAndServe(address, nil); err != nil {
 		panic(err)
 	}
 

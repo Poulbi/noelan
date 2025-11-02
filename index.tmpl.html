@@ -1,5 +1,5 @@
   <!DOCTYPE html>
-  <html lang="fr">
+  <html lang="fr" data-theme="dark">
    <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -18,16 +18,15 @@ h1 {
 }
 
 button {
- font-size: 1em;
+ font-size: 1rem;
 }
 
-#buttons {
-  margin: 1.5em;
+.buttons {
   display: flex;
   justify-content: center;
   align-items: center;
   flex-wrap: wrap;
-  gap: 1em;
+  gap: 1rem;
 }
 
 body {
@@ -37,106 +36,255 @@ body {
  height: 50vh;
 }
 
-span#name {
- color: blue;
+span.name {
+ color: #87bfcf;
 }
 
+textarea {
+ display: block !important;
+}
+
+.fade {
+    animation: fadeOut 1s forwards; /* Duration and direction of the animation */
+}
+        
+@keyframes fadeOut {
+    0% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+    }
+}
 
     </style>
     <script>
 let people =
 [{{ range .People }}
- {"name": "{{.Name}}", "other": {{.Other}}}, {{ end }}
+ {"name": "{{.Name}}", "other":{{.Other}}, "has_picked": {{.HasPicked}},}, {{ end }}
 ];
 
-let page1_html = `
+let local_storage_key = "{{.KeyID}}";
+
+function setPageFirst() {
+ document.body.innerHTML = `
 <div>
  <h1>Qui es-tu?</h1>
- <div id="buttons">
- {{ range .People }}
- <button>{{ .Name }}</button>
- {{ end }}
+ <div class="buttons">
  </div>
-</div>
-`;
+</div>`;
 
-let local_storage_key = "clicked_{{.Seed}}";
-
-function setPage1() {
- document.body.innerHTML = page1_html;
- let buttons = document.querySelectorAll("button");
- for(let index = 0; index < buttons.length; index += 1)
+ let buttons = document.querySelector("div.buttons");
+ for(let index = 0; index < people.length; index += 1)
  {
-  let button = buttons[index];
-  button.addEventListener("click", function(event) {
-   event.preventDefault();
+  let person = people[index];
+  if(!person.has_picked)
+  {
+   let button = document.createElement('button');
+   button.textContent = people[index].name;
+   buttons.appendChild(button);
+   button.addEventListener("click", function(event) {
+    event.preventDefault();
 
-   let name = button.innerText;
-   let person = null;
-   for(let person_index = 0; person_index < people.length; person_index += 1)
-   {
-    if(people[person_index].name === name)
+    let name = person.name;
+    let thisPerson = null;
+    for(let person_index = 0; person_index < people.length; person_index += 1)
     {
-     person = people[person_index];
-     break;
+     if(people[person_index].name === name)
+     {
+      thisPerson = people[person_index];
+      break;
+     }
     }
-   }
 
-   {{ if false }}
-   fetch('/person/', {
-    method: 'POST',
-    headers:
-    {
-     'Content-Type': 'application/x-www-form-urlencoded'
-    },
-    body: "name=" + person.name
-   })
-   .then(function(response) {
-    response.text().
-     then(function(text_response) {
-      if(text_response !== 'ok') {
-       console.log("Error");
-      }
-     })
-    })
-   .catch(error => console.error('Error:', error));
-   {{ end }}
+    document.body.innerHTML = `
+     <h1>Tu es bien ${thisPerson.name}?</h1>
+     <div class="buttons">
+      <button id="yes">Oui</button>
+      <button id="no">Non</button>
+     </div>`;
 
-   document.body.innerHTML = `
-    <h1>Tu es bien ${person.name}?</h1>
-    <div id="buttons">
-     <button id="yes">Oui</button>
-     <button id="no">Non</button>
-    </div>`;
+    let yes_button = document.getElementById("yes");
+    let no_button = document.getElementById("no");
 
-   let yes_button = document.getElementById("yes");
-   let no_button = document.getElementById("no");
+    yes_button.addEventListener("click", function(event) {
+     event.preventDefault();
+     localStorage.setItem(local_storage_key, thisPerson.name);
+     setPagePickingperson(thisPerson);
+    });
 
-   yes_button.addEventListener("click", function(event) {
-    event.preventDefault();
-    let other_person = people[person.other];
-    document.body.innerHTML = `<h1>Tu as&nbsp;<span id="name">${other_person.name}</span>.</h1>`;
-    localStorage.setItem(local_storage_key, other_person.name);
-   });
+    no_button.addEventListener("click", function(event) {
+     event.preventDefault();
+     setPageFirst();
+    });
 
-   no_button.addEventListener("click", function(event) {
-    event.preventDefault();
-    setPage1();
-   });
+   }); // button click even listener
+  } // has_picked
+ } // for loop
 
-  }); // button click even listener
+}
+
+function findPersonByName(picking_person_name) {
+ let result = null;
+
+ for(let peopleIndex = 0; peopleIndex < people.length; peopleIndex += 1)
+ {
+  if(people[peopleIndex].name === picking_person_name)
+  {
+   result = people[peopleIndex];
+   break;
+  }
  }
+
+ return result;
+}
+
+function setPagePerson(person) {
+ let wishlistID = "wishlist";
+ document.body.innerHTML = `
+  <div>
+  <h1>Tu as&nbsp;<span class="name">${person}</span>.</h1>
+  <h4>Sa liste des souhaits:</h4>
+  <textarea disabled readonly rows="5" cols="40" id="${wishlistID}" placeholder="vide..."></textarea>
+  </div>
+  `;
+ let list = null;
+ fetch(`/list/?name=${person}`)
+  .then(response => {
+      if (!response.ok) {
+          console.error('Network response was not ok');
+      }
+      return response.text();
+  })
+  .then(data => {
+   let wishlist = document.getElementById(wishlistID);
+   wishlist.value = data;
+  })
+  .catch(error => {
+      console.error('There was a problem with the fetch operation:', error);
+  });
+}
+
+function setPagePickingperson(thisPerson) {
+ let showPersonButtonID = "show-person";
+ let writeLetterButtonID = "write-letter";
+
+ document.body.innerHTML = `
+  <main class="container">
+  <h1>Noël-An de &nbsp;<span class="name">${thisPerson.name}</span></h1>
+   <div class="buttons">
+    <button id="${showPersonButtonID}">Voir qui j'ai choisi</button>
+    <button id="${writeLetterButtonID}">Écrire ma liste des souhaits</button>
+   </div>
+  <h4><b>Infos:</b></h4>
+  <ul>
+   <li>Ne dévoilez à persone qui vous avez tiré au sort!</li>
+   <li>Vous pouvez écrire une liste de souhaits, la personne ayant tiré votre nom y a accès.</li>
+   <li>Il n'est pas obligé de respecter la liste ou d'en écrire une. Elle sert pour inspirer des idées de cadeaux.</li>
+  </ul>
+  </main>
+  `;
+
+ let showPersonButton = document.getElementById(showPersonButtonID);
+ showPersonButton.addEventListener("click", function(event) {
+  event.preventDefault();
+
+  setPagePerson(people[thisPerson.other].name);
+ });
+
+ let writeLetterButton = document.getElementById(writeLetterButtonID);
+ writeLetterButton.addEventListener("click", function(event) {
+  event.preventDefault();
+
+  let sendLetterButtonID = "send-letter";
+  let letterTextAreaID = "letter-text";
+
+  document.body.innerHTML = `
+   <div>
+    <h1>Liste des souhaits</h1>
+    <textarea id="${letterTextAreaID}" rows="5" cols="40" placeholder="..."></textarea>
+    <div class="buttons">
+     <button id="${sendLetterButtonID}">sauvegarder</button>
+    </div>
+   </div>
+   `;
+
+
+   let letterTextArea = document.getElementById(letterTextAreaID);
+   fetch(`/list/?name=${thisPerson.name}`)
+   .then(response => {
+       if (!response.ok) {
+           console.error('Network response was not ok');
+       }
+       return response.text();
+   })
+   .then(data => {
+    letterTextArea.textContent = data;
+   })
+   .catch(error => {
+       console.error('There was a problem with the fetch operation:', error);
+   });
+
+   let sendLetterButton = document.getElementById(sendLetterButtonID);
+   sendLetterButton.addEventListener("click", function(event) {
+    event.preventDefault();
+
+    console.log("Sending list of", thisPerson.name);
+
+    let messageBody = {
+     name: thisPerson.name,
+     text: letterTextArea.value,
+    };
+    const postBody = new URLSearchParams(messageBody).toString();
+
+    fetch('/list/', {
+     method: 'POST',
+     headers:
+     {
+      'Content-Type': 'application/x-www-form-urlencoded'
+     },
+     body: postBody,
+    })
+    .then(function(response) {
+     response.text().
+      then(function(text_response) {
+        const textElement = document.createElement('div');
+        textElement.textContent = 'Sauvegardé';
+        textElement.classList.add('fade');
+        let buttons = document.querySelector("div.buttons");
+        buttons.appendChild(textElement);
+        setTimeout(() => {
+           textElement.remove();
+        }, 1000);
+      })
+     })
+    .catch(error => console.error('Error:', error));
+
+   }); // add event listener send button
+
+ }); // add event listener write letter
+
 }
 
 window.onload = function() {
- let clicked = localStorage.getItem(local_storage_key);
- if(!clicked)
+
+ // NOTE(luca): Users will expect going back to go to the home page so we do this manually.
+ var stateObj = { foo: "bar" };
+ history.pushState(stateObj, "home", "/");
+ window.addEventListener('popstate', function(event) {
+    window.location.reload();
+ });
+
+ let picking_person_name = localStorage.getItem(local_storage_key);
+ let thisPerson = findPersonByName(picking_person_name);
+
+ if(!picking_person_name)
  {
-  setPage1();
+  setPageFirst();
  }
  else
  {
-  document.body.innerHTML = `<h1>Tu as déjà choisi.</h1>`;
+  setPagePickingperson(thisPerson);
  }
 };
 
