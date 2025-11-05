@@ -1,17 +1,17 @@
-  <!DOCTYPE html>
-  <html lang="fr" data-theme="dark">
-   <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <meta property="og:title" content="Cadeaux de noël 2025"/>
-    <meta property="og:description" content="À qui offrir le cadeau de noël?"/>
+  <meta property="og:title" content="Cadeaux de noël 2025"/>
+  <meta property="og:description" content="À qui offrir le cadeau de noël?"/>
 
-    <meta property="og:image" content="/static/favicon.ico" />
+  <meta property="og:image" content="/static/favicon.ico" />
 
-    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
-    <style>
+  <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <style>
 h1 {
  display: flex;
  justify-content: center;
@@ -57,16 +57,45 @@ textarea {
     }
 }
 
-    </style>
-    <script>
+   </style>
+   <script>
+"use strict";
+
+//- Globals
 let people =
 [{{ range .People }}
- {"name": "{{.Name}}", "other":{{.Other}}, "has_picked": {{.HasPicked}},}, {{ end }}
+ {"name": "{{.Name}}", "has_picked": {{.HasPicked}},}, {{ end }}
 ];
 
 let local_storage_key = "{{.KeyID}}";
 
-function setPageFirst() {
+let global_all_data = {
+ initialized: false,
+ token: null,
+ thisName: null,
+ thisWishlist: null,
+ otherName: null,
+ otherWishlist: null,
+};
+
+//- Helpers
+function findPersonByName(picking_person_name) {
+ let result = null;
+
+ for(let peopleIndex = 0; peopleIndex < people.length; peopleIndex += 1)
+ {
+  if(people[peopleIndex].name === picking_person_name)
+  {
+   result = people[peopleIndex];
+   break;
+  }
+ }
+
+ return result;
+}
+
+//- Pages
+function setPageChoose() {
  document.body.innerHTML = `
 <div>
  <h1>Qui es-tu?</h1>
@@ -87,15 +116,7 @@ function setPageFirst() {
     event.preventDefault();
 
     let name = person.name;
-    let thisPerson = null;
-    for(let person_index = 0; person_index < people.length; person_index += 1)
-    {
-     if(people[person_index].name === name)
-     {
-      thisPerson = people[person_index];
-      break;
-     }
-    }
+    let thisPerson = findPersonByName(name);
 
     document.body.innerHTML = `
      <h1>Tu es bien ${thisPerson.name}?</h1>
@@ -107,74 +128,86 @@ function setPageFirst() {
     let yes_button = document.getElementById("yes");
     let no_button = document.getElementById("no");
 
-    yes_button.addEventListener("click", function(event) {
+    yes_button.addEventListener("click", async function(event) {
      event.preventDefault();
-     localStorage.setItem(local_storage_key, thisPerson.name);
-     setPagePickingperson(thisPerson);
+     await fetch(`/choose/?name=${thisPerson.name}`)
+      .then(function(response) {
+          if (!response.ok) {
+              console.error('Network response was not ok');
+          }
+          return response.json();
+      })
+      .then(function(response) {
+       global_all_data.token = response.Token;
+       global_all_data.thisName = thisPerson.name;
+       global_all_data.thisWishlist = response.ThisWishlist;
+       global_all_data.otherName = response.OtherName;
+       global_all_data.otherWishlist = response.OtherWishlist;
+       global_all_data.initialized = true;
+
+       localStorage.setItem(local_storage_key, JSON.stringify(global_all_data));
+       })
+      .catch(function(error) {
+          console.error('There was a problem with the fetch operation:', error);
+      });
+
+     setPageThisPerson();
     });
 
     no_button.addEventListener("click", function(event) {
      event.preventDefault();
-     setPageFirst();
+     setPageChoose();
     });
 
    }); // button click even listener
   } // has_picked
  } // for loop
-
 }
 
-function findPersonByName(picking_person_name) {
- let result = null;
-
- for(let peopleIndex = 0; peopleIndex < people.length; peopleIndex += 1)
- {
-  if(people[peopleIndex].name === picking_person_name)
-  {
-   result = people[peopleIndex];
-   break;
-  }
- }
-
- return result;
-}
-
-function setPagePerson(person) {
+function setPageOtherPerson() {
  let wishlistID = "wishlist";
  document.body.innerHTML = `
   <div>
-  <h1>Tu as&nbsp;<span class="name">${person}</span>.</h1>
+  <h1>Tu as&nbsp;<span class="name">${global_all_data.otherName}</span>.</h1>
   <h4>Sa liste des souhaits:</h4>
-  <textarea disabled readonly rows="5" cols="40" id="${wishlistID}" placeholder="vide..."></textarea>
+  <textarea readonly rows="5" cols="40" id="${wishlistID}" placeholder="vide..."></textarea>
   </div>
   `;
- let list = null;
- fetch(`/list/?name=${person}`)
-  .then(response => {
-      if (!response.ok) {
-          console.error('Network response was not ok');
-      }
-      return response.text();
-  })
-  .then(data => {
-   let wishlist = document.getElementById(wishlistID);
-   wishlist.value = data;
-  })
-  .catch(error => {
-      console.error('There was a problem with the fetch operation:', error);
-  });
+ let wishlist = document.getElementById(wishlistID);
+
+ wishlist.textContent = global_all_data.otherWishlist;
+
+ fetch(`/list/?name=${global_all_data.thisName}&token=${global_all_data.token}`)
+ .then(function(response) {
+     if (!response.ok) {
+         console.error('Network response was not ok');
+     }
+     return response.text();
+ })
+ .then(function(response) {
+  if(wishlist.textContent != response)
+  {
+   global_all_data.otherWishlist = response;
+   wishlist.textContent = global_all_data.otherWishlist;
+   localStorage.setItem(local_storage_key, JSON.stringify(global_all_data));
+  }
+ })
+ .catch(function(error) {
+     console.error('There was a problem with the fetch operation:', error);
+ });
+
 }
 
-function setPagePickingperson(thisPerson) {
+function setPageThisPerson() {
  let showPersonButtonID = "show-person";
  let writeLetterButtonID = "write-letter";
 
  document.body.innerHTML = `
   <main class="container">
-  <h1>Noël-An de &nbsp;<span class="name">${thisPerson.name}</span></h1>
+  <h1>Noël-An de &nbsp;<span class="name">${global_all_data.thisName}</span></h1>
    <div class="buttons">
     <button id="${showPersonButtonID}">Voir qui j'ai choisi</button>
-    <button id="${writeLetterButtonID}">Écrire ma liste des souhaits</button>
+    <button id="${writeLetterButtonID}">Ma liste des souhaits</button>
    </div>
   <h4><b>Infos:</b></h4>
   <ul>
@@ -189,7 +222,7 @@ function setPagePickingperson(thisPerson) {
  showPersonButton.addEventListener("click", function(event) {
   event.preventDefault();
 
-  setPagePerson(people[thisPerson.other].name);
+  setPageOtherPerson();
  });
 
  let writeLetterButton = document.getElementById(writeLetterButtonID);
@@ -209,30 +242,21 @@ function setPagePickingperson(thisPerson) {
    </div>
    `;
 
-
    let letterTextArea = document.getElementById(letterTextAreaID);
-   fetch(`/list/?name=${thisPerson.name}`)
-   .then(response => {
-       if (!response.ok) {
-           console.error('Network response was not ok');
-       }
-       return response.text();
-   })
-   .then(data => {
-    letterTextArea.textContent = data;
-   })
-   .catch(error => {
-       console.error('There was a problem with the fetch operation:', error);
-   });
+   letterTextArea.textContent = global_all_data.thisWishlist;
 
    let sendLetterButton = document.getElementById(sendLetterButtonID);
    sendLetterButton.addEventListener("click", function(event) {
     event.preventDefault();
 
-    console.log("Sending list of", thisPerson.name);
+    console.log("Sending list of", global_all_data.thisName);
+
+    global_all_data.thisWishlist = letterTextArea.value
+    localStorage.setItem(local_storage_key, JSON.stringify(global_all_data));
 
     let messageBody = {
-     name: thisPerson.name,
+     name: global_all_data.thisName,
+     token: global_all_data.token,
      text: letterTextArea.value,
     };
     const postBody = new URLSearchParams(messageBody).toString();
@@ -253,45 +277,43 @@ function setPagePickingperson(thisPerson) {
         textElement.classList.add('fade');
         let buttons = document.querySelector("div.buttons");
         buttons.appendChild(textElement);
-        setTimeout(() => {
+        setTimeout(function() {
            textElement.remove();
         }, 1000);
       })
      })
-    .catch(error => console.error('Error:', error));
+     .catch(function(error) { console.error('Error:', error); });
 
    }); // add event listener send button
-
  }); // add event listener write letter
-
 }
 
+//- Main
 window.onload = function() {
-
  // NOTE(luca): Users will expect going back to go to the home page so we do this manually.
- var stateObj = { foo: "bar" };
+ var stateObj = { home: "home" };
  history.pushState(stateObj, "home", "/");
  window.addEventListener('popstate', function(event) {
     window.location.reload();
  });
 
- let picking_person_name = localStorage.getItem(local_storage_key);
- let thisPerson = findPersonByName(picking_person_name);
-
- if(!picking_person_name)
+ let all_data = localStorage.getItem(local_storage_key);
+ if(!all_data)
  {
-  setPageFirst();
+  setPageChoose();
  }
  else
  {
-  setPagePickingperson(thisPerson);
+  let data_parsed = JSON.parse(all_data);
+  global_all_data = data_parsed;
+  console.log(global_all_data);
+
+  setPageThisPerson();
  }
 };
+  </script>
+ </head>
+ <body>
+ </body>
 
-    </script>
-
-   </head>
-   <body>
-   </body>
-
-  </html>
+</html>

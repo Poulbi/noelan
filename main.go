@@ -17,9 +17,9 @@
 // 1. Have no ID
 // 2. Choose name
 // 3. Get (and store in local storage)
-// -  other person name
+// -  other person's name & list
+// -  this person's name & list
 // -  token to make requests
-// -  this name's id
 // 4. Set this ID picked on server
 //
 // -> This data is used to know if the person has picked or not.
@@ -33,6 +33,7 @@ package main
 //- Libraries
 import (
 	"encoding/gob"
+ "encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -41,6 +42,7 @@ import (
 	"net/http"
 	"os/signal"
 	"strings"
+ "strconv"
 
 	_ "embed"
 	"log"
@@ -69,11 +71,12 @@ var local_storage_key_id int64
 //go:embed index.tmpl.html
 var page_html string
 
-// This is the default list when it is not decoded from the data file see below
+//- Globals
 var global_people = []Person{
 	{Name: "Nawel"},
 	{Name: "Tobias"},
 	{Name: "Luca"},
+	{Name: "Lola"},
 	{Name: "Aeris"},
 	{Name: "Lionel"},
 	{Name: "Aurélie"},
@@ -84,45 +87,9 @@ var global_people = []Person{
 }
 
 var global_version int = 1
-
 var data_file_name string = "people.gob"
 
-func DecodeData(logger *log.Logger, file_name string) {
-	file, err := os.Open(file_name)
-	if errors.Is(err, os.ErrNotExist) {
-		logger.Println("Datafile does not exist.  Creating", file_name)
-		file, err = os.Create(file_name)
-		if err != nil {
-			logger.Fatalln(err)
-		}
-
-	} else if err != nil {
-		logger.Fatalln(err)
-	} else {
-		dec := gob.NewDecoder(file)
-
-		// Check the version
-		var version int
-		if err := dec.Decode(&version); err != io.EOF && err != nil {
-			logger.Fatalln(err)
-		}
-		if version != global_version {
-			logger.Fatalf("Version mismatch for datafile@%s != package@%s\n", version, global_version)
-		}
-
-		// Decode the data and import it into global_people
-		if err := dec.Decode(&global_people); err != nil && err != io.EOF {
-			logger.Fatalln(err)
-		}
-
-		logger.Printf("Imported %d people.\n", len(global_people))
-
-		if err := file.Close(); err != nil {
-			logger.Fatalln(err)
-		}
-	}
-}
-
+//- Serializing
 func EncodeData(logger *log.Logger, file_name string) {
 	file, err := os.Create(file_name)
 	if err != nil {
@@ -139,6 +106,43 @@ func EncodeData(logger *log.Logger, file_name string) {
 	}
 }
 
+
+func DecodeData(logger *log.Logger, file_name string) {
+	file, err := os.Open(file_name)
+	if errors.Is(err, os.ErrNotExist) {
+		logger.Println("Datafile does not exist.  Creating", file_name)
+		file, err = os.Create(file_name)
+		if err != nil {
+			logger.Fatalln(err)
+		}
+  EncodeData(logger, file_name)
+
+	} else if err != nil {
+		logger.Fatalln(err)
+	} else {
+		dec := gob.NewDecoder(file)
+
+		var version int
+		if err := dec.Decode(&version); err != io.EOF && err != nil {
+			logger.Fatalln(err)
+		}
+		if version != global_version {
+			logger.Fatalf("Version mismatch for datafile@%d != package@%d\n", version, global_version)
+		}
+
+		if err := dec.Decode(&global_people); err != nil && err != io.EOF {
+			logger.Fatalln(err)
+		}
+
+		logger.Printf("Imported %d people.\n", len(global_people))
+
+		if err := file.Close(); err != nil {
+			logger.Fatalln(err)
+		}
+	}
+}
+
+//- Person
 func (person Person) String() string {
 	var digits string
 	if person.Token > 99999 {
@@ -196,24 +200,14 @@ func FindPersonByOtherName(people []Person, name string) (bool, *Person) {
 	return found, found_person
 }
 
-// - Main
-func main() {
-	logger := log.New(os.Stdout, "[noel] ", log.Ldate|log.Ltime)
-
-	seed := rand.Int63()
-	seed = 1623876946084255669
-	logger.Println("seed:", seed)
-	source := rand.NewSource(seed)
-	seeded_rand := rand.New(source)
-	rand.Seed(seed)
-
+func ShufflePeople(rand *rand.Rand, people []Person, logger *log.Logger) {
 	// Get a shuffled list that has following constaints
 	// 1. One person cannot choose itself
 	// 2. Every person has picked another person
 	var list []int
 	correct := false
 	for !correct {
-		list = seeded_rand.Perm(len(global_people))
+		list = rand.Perm(len(people))
 
 		correct = true
 		for i, version := range list {
@@ -225,17 +219,37 @@ func main() {
 		}
 	}
 
-	local_storage_key_id = seeded_rand.Int63()
-
 	// Initialize people
 	for index, value := range list {
-		global_people[index].Other = value
-		global_people[index].Token = seeded_rand.Int63()
+		people[index].Other = value
 	}
+}
 
-	DecodeData(logger, data_file_name)
 
-	fmt.Println(global_people)
+// - Main
+func main() {
+	logger := log.New(os.Stdout, "[noel] ", log.Ldate|log.Ltime)
+
+	seed := rand.Int63()
+	// seed = 1623876946084255669
+	logger.Println("seed:", seed)
+	source := rand.NewSource(seed)
+	seeded_rand := rand.New(source)
+	rand.Seed(seed)
+
+ // Init people
+ {
+  ShufflePeople(seeded_rand, global_people, logger)
+
+  local_storage_key_id = rand.Int63()
+  for index := range global_people {
+   global_people[index].Token = seeded_rand.Int63() / 10000
+  }
+
+  DecodeData(logger, data_file_name)
+
+  fmt.Println(global_people)
+ }
 
 	go func() {
 		c := make(chan os.Signal, 1)
@@ -252,44 +266,97 @@ func main() {
 
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./assets"))))
 
-	http.HandleFunc("/unpickall/", func(writer http.ResponseWriter, request *http.Request) {
-		for index := range global_people {
-			global_people[index].HasPicked = false
-		}
-		fmt.Fprintln(writer, "Done.")
-	})
+ // TODO: replace these by command line flags
+	// http.HandleFunc("/unpickall/", func(writer http.ResponseWriter, request *http.Request) {
+	// 	for index := range global_people {
+	// 		global_people[index].HasPicked = false
+	// 	}
+	// 	fmt.Fprintln(writer, "Done.")
+	// })
+
+	// http.HandleFunc("/shuffle/", func(writer http.ResponseWriter, request *http.Request) {
+	//  ShufflePeople(seeded_rand, global_people, logger)
+	//
+	//  fmt.Fprintln(writer, "Done.")
+	// })
+
+	// http.HandleFunc("/addlola/", func(writer http.ResponseWriter, request *http.Request) {
+	//  global_people = append(global_people, Person{Name:"Lola", Token:seeded_rand.Int63()})
+	//
+	//  fmt.Fprintln(writer, "Done.")
+	// })
 
 	http.HandleFunc("/list/", func(writer http.ResponseWriter, request *http.Request) {
 		if request.Method == http.MethodPost {
 			name := request.FormValue("name")
 			text := request.FormValue("text")
+			token := request.FormValue("token")
 
 			logger.Println("Edit wishlist of", name)
 			found, person := FindPersonByName(global_people, name)
 
 			if found {
-				person.Wishlist = text
-				person.HasPicked = true
-				logger.Println(global_people)
+    tokenString := strconv.FormatInt(person.Token, 10)
+    if token == tokenString {
+     person.Wishlist = text
+     person.HasPicked = true
+     logger.Println(global_people)
 
-				fmt.Fprintln(writer, "ok")
-
+     fmt.Fprintln(writer, "ok")
+    } else {
+     http.Error(writer, "invalid token", http.StatusNotFound)
+    }
 			} else {
-				fmt.Fprintln(writer, "error")
+    http.Error(writer, "no such person", http.StatusNotFound)
 			}
 		} else if request.Method == http.MethodGet {
 			params := request.URL.Query()
 			name := params.Get("name")
+   token := params.Get("token")
 
-			found, picking_person := FindPersonByOtherName(global_people, name)
+   found, person := FindPersonByName(global_people, name)
+
 			if found {
-				picked_person := &global_people[picking_person.Other]
-				fmt.Fprintln(writer, picked_person.Wishlist)
+    logger.Println(len(token))
+    tokenString := strconv.FormatInt(person.Token, 10)
+
+    if token == tokenString {
+     fmt.Fprint(writer, global_people[person.Other].Wishlist)
+    } else {
+     http.Error(writer, "invalid token", http.StatusNotFound)
+    }
 			} else {
-				fmt.Fprintln(writer, "error")
+    http.Error(writer, "no such person", http.StatusNotFound)
 			}
 		}
 	})
+
+	http.HandleFunc("/choose/", func(writer http.ResponseWriter, request *http.Request) {
+			params := request.URL.Query()
+			name := params.Get("name")
+   found, person := FindPersonByName(global_people, name)
+   if found {
+    if !person.HasPicked {
+    person.HasPicked = true
+
+    type Response struct {
+     Token int64
+     ThisWishlist string
+     OtherName string
+     OtherWishlist string
+    }
+    other_person := global_people[person.Other]
+
+    response := Response{person.Token, person.Wishlist, other_person.Name, other_person.Wishlist}
+
+    json.NewEncoder(writer).Encode(response)
+    } else {
+     http.Error(writer, "person already picked", http.StatusNotFound)
+    }
+   } else {
+     http.Error(writer, "no such person", http.StatusNotFound)
+   }
+ })
 
 	// Execute the template before-hand since the contents won't change.
 	response := TemplateToString(page_html, global_people, seed)
