@@ -67,7 +67,7 @@ let people =
  {"name": "{{.Name}}", "has_picked": {{.HasPicked}},}, {{ end }}
 ];
 
-let local_storage_key = "{{.KeyID}}";
+let local_storage_key = "{{.Key}}";
 
 let global_all_data = {
  initialized: false,
@@ -97,11 +97,12 @@ function findPersonByName(picking_person_name) {
 //- Pages
 function setPageChoose() {
  document.body.innerHTML = `
-<div>
- <h1>Qui es-tu?</h1>
- <div class="buttons">
- </div>
-</div>`;
+  <div>
+   <h1>Qui es-tu?</h1>
+   <div class="buttons">
+   </div>
+  </div>
+  `;
 
  let buttons = document.querySelector("div.buttons");
  for(let index = 0; index < people.length; index += 1)
@@ -204,17 +205,18 @@ function setPageThisPerson() {
 
  document.body.innerHTML = `
   <main class="container">
-  <h1>Noël-An de &nbsp;<span class="name">${global_all_data.thisName}</span></h1>
+   <h1>Noël-An de &nbsp;<span class="name">${global_all_data.thisName}</span></h1>
    <div class="buttons">
     <button id="${showPersonButtonID}">Voir qui j'ai choisi</button>
     <button id="${writeLetterButtonID}">Ma liste des souhaits</button>
    </div>
-  <h4><b>Infos:</b></h4>
-  <ul>
-   <li>Ne dévoilez à persone qui vous avez tiré au sort!</li>
-   <li>Vous pouvez écrire une liste de souhaits, la personne ayant tiré votre nom y a accès.</li>
-   <li>Il n'est pas obligé de respecter la liste ou d'en écrire une. Elle sert pour inspirer des idées de cadeaux.</li>
-  </ul>
+   <h4><b>Infos:</b></h4>
+   <ul>
+    <li>Ne dévoilez à persone qui vous avez tiré au sort!</li>
+    <li>Vous pouvez écrire une liste de souhaits, la personne ayant tiré votre nom y a accès.</li>
+    <li>Il n'est pas obligé de respecter la liste ou d'en écrire une. Elle sert pour inspirer des idées de cadeaux.</li>
+    <li>Si vous avez un soucis n'hésitez-pas à me contacter !</li>
+   </ul>
   </main>
   `;
 
