@@ -81,7 +81,7 @@ var global_people = []Person{
 	{Name: "Yves"},
 	{Name: "Marthe"},
 }
-var global_people_intialized = false
+var global_people_initialized = false
 
 var global_version int = 2
 var global_data_file_name string = "people.gob"
@@ -118,13 +118,7 @@ func DecodeWrapper(decoder *gob.Decoder, value any, logger *log.Logger) {
 func DecodeData(logger *log.Logger, file_name string) {
 	file, err := os.Open(file_name)
 	if errors.Is(err, os.ErrNotExist) {
-		logger.Println("Datafile does not exist.  Creating", file_name)
-		file, err = os.Create(file_name)
-		if err != nil {
-			logger.Fatalln(err)
-		}
-		EncodeData(logger, file_name)
-
+  logger.Println("Datafile does not exist:", file_name)
 	} else if err != nil {
 		logger.Fatalln(err)
 	} else {
@@ -144,7 +138,7 @@ func DecodeData(logger *log.Logger, file_name string) {
 
 		logger.Printf("Imported %d people.\n", len(global_people))
 
-		global_people_intialized = true
+		global_people_initialized = true
 
 		if err := file.Close(); err != nil {
 			logger.Fatalln(err)
@@ -251,7 +245,7 @@ func HttpError(logger *log.Logger, message string, person *Person, writer http.R
 func main() {
 	var did_work bool
 	var internal, slow bool
-	var serve, shuffle, unpickall, show_people bool
+	var serve, shuffle, unpickall, show_people, reset_tokens bool
 	var add_person, remove_person, unpick string
 	var set_local_storage_key int64
 
@@ -259,6 +253,7 @@ func main() {
 	flag.BoolVar(&internal, "internal", false, "run commands in internal mode")
 	flag.BoolVar(&slow, "slow", false, "run commands in slow mode")
 	flag.BoolVar(&shuffle, "shuffle", false, "shuffle people again")
+	flag.BoolVar(&reset_tokens, "reset_tokens", false, "reset tokens of people")
 	flag.BoolVar(&unpickall, "unpickall", false, "unpick all people")
 	flag.BoolVar(&show_people, "show_people", false, "show people")
 	flag.StringVar(&add_person, "add_person", "", "add person by name")
@@ -280,7 +275,54 @@ func main() {
 	seeded_rand := rand.New(source)
 	rand.Seed(seed)
 
-	DecodeData(logger, global_data_file_name)
+	// Init people
+	{
+		DecodeData(logger, global_data_file_name)
+		if !global_people_initialized {
+			logger.Println("Initialize people.")
+			ShufflePeople(seeded_rand, global_people, logger)
+
+			for index := range global_people {
+				// NOTE(luca): since javascript cannot handle big numbers we crop them
+				global_people[index].Token = seeded_rand.Int63() / 10000
+			}
+
+			global_people_initialized = true
+		}
+
+		if !global_local_storage_key_initialized {
+   logger.Println("Initialize local storage key.")
+			global_local_storage_key = rand.Int63()
+			global_local_storage_key_initialized = true
+		}
+	}
+
+	if len(add_person) > 0 {
+  global_people = append(global_people, Person{Name:add_person})
+  fmt.Println(global_people)
+		did_work = true
+	}
+
+	if len(remove_person) > 0 {
+  for index, person := range global_people {
+   if person.Name == remove_person {
+    global_people = append(global_people[:index], global_people[index+1:]...)
+    break
+   }
+  }
+		logger.Println("remove:", remove_person)
+		did_work = true
+	}
+
+	if reset_tokens {
+		for index := range global_people {
+			// NOTE(luca): since javascript cannot handle big numbers we crop them
+			global_people[index].Token = seeded_rand.Int63() / 10000
+		}
+
+		logger.Println("reset tokens.")
+		did_work = true
+	}
 
 	if unpickall {
 		for index := range global_people {
@@ -298,7 +340,7 @@ func main() {
 
 	if show_people {
 		for _, person := range global_people {
-			fmt.Printf("%12s[%d] %t\n", person.Name, person.Token, person.HasPicked)
+			fmt.Printf("%12s [%d] %t\n", person.Name, person.Token, person.HasPicked)
 		}
 	}
 
@@ -314,16 +356,6 @@ func main() {
 		did_work = true
 	}
 
-	if len(add_person) > 0 {
-		logger.Println("add:", add_person)
-		did_work = true
-	}
-
-	if len(remove_person) > 0 {
-		logger.Println("remove:", remove_person)
-		did_work = true
-	}
-
 	if set_local_storage_key != 0 {
 		global_local_storage_key = set_local_storage_key
 		global_local_storage_key_initialized = true
@@ -331,22 +363,6 @@ func main() {
 	}
 
 	if serve {
-		if !global_local_storage_key_initialized {
-			global_local_storage_key = rand.Int63()
-			global_local_storage_key_initialized = true
-		}
-
-		if !global_people_intialized {
-			ShufflePeople(seeded_rand, global_people, logger)
-
-			for index := range global_people {
-				// NOTE(luca): since javascript cannot handle big numbers we crop them
-				global_people[index].Token = seeded_rand.Int63() / 10000
-			}
-
-			global_people_intialized = true
-		}
-
 		logger.Println("local storage key:", global_local_storage_key)
 		logger.Println(global_people)
 
