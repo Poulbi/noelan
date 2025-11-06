@@ -45,8 +45,10 @@ import (
 	"strings"
 
 	_ "embed"
+	"io"
 	"log"
 	"os"
+	"time"
 )
 
 // - Types
@@ -85,6 +87,7 @@ var global_people_initialized = false
 
 var global_version int = 2
 var global_data_file_name string = "people.gob"
+var global_data_directory_name string = "gobs"
 
 func EncodeWrapper(encoder *gob.Encoder, value any, logger *log.Logger) {
 	if err := encoder.Encode(value); err != nil {
@@ -94,6 +97,7 @@ func EncodeWrapper(encoder *gob.Encoder, value any, logger *log.Logger) {
 
 // - Serializing
 func EncodeData(logger *log.Logger, file_name string) {
+
 	file, err := os.Create(file_name)
 	if err != nil {
 		logger.Fatalln(err)
@@ -118,10 +122,11 @@ func DecodeWrapper(decoder *gob.Decoder, value any, logger *log.Logger) {
 func DecodeData(logger *log.Logger, file_name string) {
 	file, err := os.Open(file_name)
 	if errors.Is(err, os.ErrNotExist) {
-  logger.Println("Datafile does not exist:", file_name)
+		logger.Println("Datafile does not exist:", file_name)
 	} else if err != nil {
 		logger.Fatalln(err)
 	} else {
+
 		decoder := gob.NewDecoder(file)
 
 		var version int
@@ -141,7 +146,7 @@ func DecodeData(logger *log.Logger, file_name string) {
 		global_people_initialized = true
 
 		if err := file.Close(); err != nil {
-			logger.Fatalln(err)
+			logger.Fatalln("Error closing file", err)
 		}
 	}
 }
@@ -275,6 +280,47 @@ func main() {
 	seeded_rand := rand.New(source)
 	rand.Seed(seed)
 
+	// backup
+	{
+		file, err := os.Open(global_data_file_name)
+		defer file.Close()
+		if errors.Is(err, os.ErrNotExist) {
+			logger.Println("Datafile does not exist:", global_data_file_name)
+		} else if err != nil {
+			logger.Fatalln(err)
+		} else {
+			_, err := os.Stat(global_data_directory_name)
+			if os.IsNotExist(err) {
+				err = os.MkdirAll(global_data_directory_name, 0755)
+				if err != nil {
+					logger.Printf("Error creating directory: %v\n", err)
+				}
+				logger.Println("Directory created successfully")
+			} else if err != nil {
+				logger.Printf("Error checking directory: %v\n", err)
+			} else {
+				// Directory already exists
+			}
+
+			now := time.Now()
+			formatted_now := now.Format("060102_03_04_05")
+
+			destination_file_name := fmt.Sprintf("./%s/%s__%s", global_data_directory_name, formatted_now, global_data_file_name)
+			destination, err := os.Create(destination_file_name)
+			if err != nil {
+				logger.Fatalln("Error creating copy:", err)
+			}
+			defer destination.Close()
+
+			_, err = io.Copy(destination, file)
+			if err == nil {
+				logger.Println("Created backup.")
+			} else {
+				logger.Fatalln("Error creating backup:", err)
+			}
+		}
+	}
+
 	// Init people
 	{
 		DecodeData(logger, global_data_file_name)
@@ -291,25 +337,25 @@ func main() {
 		}
 
 		if !global_local_storage_key_initialized {
-   logger.Println("Initialize local storage key.")
+			logger.Println("Initialize local storage key.")
 			global_local_storage_key = rand.Int63()
 			global_local_storage_key_initialized = true
 		}
 	}
 
 	if len(add_person) > 0 {
-  global_people = append(global_people, Person{Name:add_person})
-  fmt.Println(global_people)
+		global_people = append(global_people, Person{Name: add_person})
+		fmt.Println(global_people)
 		did_work = true
 	}
 
 	if len(remove_person) > 0 {
-  for index, person := range global_people {
-   if person.Name == remove_person {
-    global_people = append(global_people[:index], global_people[index+1:]...)
-    break
-   }
-  }
+		for index, person := range global_people {
+			if person.Name == remove_person {
+				global_people = append(global_people[:index], global_people[index+1:]...)
+				break
+			}
+		}
 		logger.Println("remove:", remove_person)
 		did_work = true
 	}
@@ -325,17 +371,17 @@ func main() {
 	}
 
 	if unpickall {
+		did_work = true
 		for index := range global_people {
 			global_people[index].HasPicked = false
 		}
 		logger.Println("Unpicked all.")
-		did_work = true
 	}
 
 	if shuffle {
+		did_work = true
 		ShufflePeople(seeded_rand, global_people, logger)
 		logger.Println("Shuffled people.")
-		did_work = true
 	}
 
 	if show_people {
@@ -345,6 +391,7 @@ func main() {
 	}
 
 	if len(unpick) > 0 {
+		did_work = true
 		logger.Println("unpick:", unpick)
 		found, person := FindPersonByName(global_people, unpick)
 		if found {
@@ -353,25 +400,32 @@ func main() {
 		} else {
 			logger.Fatalln("No such person")
 		}
-		did_work = true
 	}
 
 	if set_local_storage_key != 0 {
+		did_work = true
 		global_local_storage_key = set_local_storage_key
 		global_local_storage_key_initialized = true
-		did_work = true
 	}
 
 	if serve {
+		did_work = true
 		logger.Println("local storage key:", global_local_storage_key)
 		logger.Println(global_people)
+
+		for index := range global_people {
+			fmt.Print(global_people[index].Other)
+		}
+		fmt.Print("\n")
 
 		go func() {
 			c := make(chan os.Signal, 1)
 			signal.Notify(c, os.Interrupt)
 			<-c
 
-			EncodeData(logger, global_data_file_name)
+			if did_work {
+				EncodeData(logger, global_data_file_name)
+			}
 
 			logger.Println("data saved.")
 			os.Exit(0)
@@ -476,7 +530,6 @@ func main() {
 			panic(err)
 		}
 
-		did_work = true
 	}
 
 	if did_work {
