@@ -61,42 +61,21 @@ type Person struct {
 }
 
 //- Globals
-
-var nil_person = Person{Name: "nil"}
-var global_local_storage_key int64
-var global_local_storage_key_initialized = false
-
 //go:embed index.tmpl.html
-var global_page_html string
+var GlobalPageHTML string
+const GlobalDataFileName = "people.gob"
+const GlobalDataDirectoryName = "gobs"
+const GlobalPerson int = 2
+var GlobalNilPerson = Person{}
 
-// - Globals
-var global_people = []Person{
-	{Name: "Nawel"},
-	{Name: "Tobias"},
-	{Name: "Luca"},
-	{Name: "Lola"},
-	{Name: "Aeris"},
-	{Name: "Lionel"},
-	{Name: "Aurélie"},
-	{Name: "Sean"},
-	{Name: "Émilie"},
-	{Name: "Yves"},
-	{Name: "Marthe"},
-}
-var global_people_initialized = false
-
-var global_version int = 2
-var global_data_file_name string = "people.gob"
-var global_data_directory_name string = "gobs"
-
+//- Serializing
 func EncodeWrapper(encoder *gob.Encoder, value any, logger *log.Logger) {
 	if err := encoder.Encode(value); err != nil {
 		logger.Fatalln(err)
 	}
 }
 
-// - Serializing
-func EncodeData(logger *log.Logger, file_name string) {
+func EncodeData(logger *log.Logger, file_name string, version int, local_storage_key int64, people []Person) {
 
 	file, err := os.Create(file_name)
 	if err != nil {
@@ -106,11 +85,11 @@ func EncodeData(logger *log.Logger, file_name string) {
 
 	encoder := gob.NewEncoder(file)
 
-	EncodeWrapper(encoder, global_version, logger)
-	EncodeWrapper(encoder, global_local_storage_key, logger)
-	EncodeWrapper(encoder, global_people, logger)
+	EncodeWrapper(encoder, version, logger)
+	EncodeWrapper(encoder, local_storage_key, logger)
+	EncodeWrapper(encoder, people, logger)
 
-	logger.Printf("saved %d people.\n", len(global_people))
+	logger.Printf("saved %d people.\n", len(people))
 }
 
 func DecodeWrapper(decoder *gob.Decoder, value any, logger *log.Logger) {
@@ -119,38 +98,42 @@ func DecodeWrapper(decoder *gob.Decoder, value any, logger *log.Logger) {
 	}
 }
 
-func DecodeData(logger *log.Logger, file_name string) {
+func DecodeData(logger *log.Logger, file_name string, version int, people *[]Person, local_storage_key *int64) (bool, bool) {
+	local_storage_key_decoded := false
+	people_decoded := false
+
 	file, err := os.Open(file_name)
 	if errors.Is(err, os.ErrNotExist) {
-  logger.Println("No data imported.")
+		logger.Println("No data imported.")
 	} else if err != nil {
 		logger.Fatalln(err)
 	} else {
 		decoder := gob.NewDecoder(file)
 
-		var version int
-		DecodeWrapper(decoder, &version, logger)
-		logger.Printf("datafile@%d program@%d\n", version, global_version)
+		var file_version int
+		DecodeWrapper(decoder, &file_version, logger)
+		logger.Printf("datafile@%d program@%d\n", file_version, version)
 
 		// NOTE(luca): this will automatically migrate v1 to v2
-		if version == 2 {
-			DecodeWrapper(decoder, &global_local_storage_key, logger)
-			global_local_storage_key_initialized = true
+		if file_version == 2 {
+			DecodeWrapper(decoder, local_storage_key, logger)
+			local_storage_key_decoded = true
 		}
 
-		DecodeWrapper(decoder, &global_people, logger)
+		DecodeWrapper(decoder, people, logger)
 
-		logger.Printf("Imported %d people.\n", len(global_people))
-
-		global_people_initialized = true
+		logger.Printf("Imported %d people.\n", len(*people))
+		people_decoded = true
 
 		if err := file.Close(); err != nil {
 			logger.Fatalln("Error closing file", err)
 		}
 	}
+
+	return people_decoded, local_storage_key_decoded
 }
 
-// - Person
+//- Person
 func (person Person) String() string {
 	var digits string
 	if person.Token > 99999 {
@@ -162,7 +145,8 @@ func (person Person) String() string {
 	return fmt.Sprintf("%s_%s(%t)", person.Name, digits, person.HasPicked)
 }
 
-func TemplateToString(template_contents string, people []Person, internal bool) string {
+//- Helpers
+func TemplateToString(template_contents string, people []Person, local_storage_key int64, internal bool) string {
 	var buf strings.Builder
 	template_response, err := template.New("tirage").Parse(template_contents)
 	if err != nil {
@@ -174,7 +158,7 @@ func TemplateToString(template_contents string, people []Person, internal bool) 
 		Key      int64
 		Internal bool
 	}
-	err = template_response.ExecuteTemplate(&buf, "tirage", PageData{People: people, Key: global_local_storage_key, Internal: internal})
+	err = template_response.ExecuteTemplate(&buf, "tirage", PageData{People: people, Key: local_storage_key, Internal: internal})
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -191,21 +175,6 @@ func FindPersonByName(people []Person, name string) (bool, *Person) {
 		if name == value.Name {
 			found_person = &people[index]
 			found = true
-			break
-		}
-	}
-
-	return found, found_person
-}
-
-func FindPersonByOtherName(people []Person, name string) (bool, *Person) {
-	var found_person *Person
-	var found bool
-
-	for index, person := range people {
-		if name == people[person.Other].Name {
-			found = true
-			found_person = &people[index]
 			break
 		}
 	}
@@ -247,6 +216,24 @@ func HttpError(logger *log.Logger, message string, person *Person, writer http.R
 
 // - Main
 func Run() {
+ var people = []Person{
+  {Name: "Nawel"},
+  {Name: "Tobias"},
+  {Name: "Luca"},
+  {Name: "Lola"},
+  {Name: "Aeris"},
+  {Name: "Lionel"},
+  {Name: "Aurélie"},
+  {Name: "Sean"},
+  {Name: "Émilie"},
+  {Name: "Yves"},
+  {Name: "Marthe"},
+ }
+ var local_storage_key int64
+ var people_initialized = false
+ var local_storage_key_initialized = false
+
+ // Flags
 	var did_work bool
 	var internal, slow, save bool
 	var serve, shuffle, unpickall, show_people, reset_tokens bool
@@ -282,16 +269,16 @@ func Run() {
 
 	// backup
 	{
-		file, err := os.Open(global_data_file_name)
+		file, err := os.Open(GlobalDataFileName)
 		defer file.Close()
 		if errors.Is(err, os.ErrNotExist) {
-   logger.Printf("Cannot create backup: file '%s' not found.\n", global_data_file_name)
+			logger.Printf("Cannot create backup: file '%s' not found.\n", GlobalDataFileName)
 		} else if err != nil {
 			logger.Fatalln(err)
 		} else {
-			_, err := os.Stat(global_data_directory_name)
+			_, err := os.Stat(GlobalDataDirectoryName)
 			if os.IsNotExist(err) {
-				err = os.MkdirAll(global_data_directory_name, 0755)
+				err = os.MkdirAll(GlobalDataDirectoryName, 0755)
 				if err != nil {
 					logger.Printf("Error creating directory: %v\n", err)
 				}
@@ -303,9 +290,9 @@ func Run() {
 			}
 
 			now := time.Now()
-			formatted_now := now.Format("060102_03_04_05")
+			formatted_now := now.Format("060102_15_04_05")
 
-			destination_file_name := fmt.Sprintf("./%s/%s__%s", global_data_directory_name, formatted_now, global_data_file_name)
+			destination_file_name := fmt.Sprintf("./%s/%s__%s", GlobalDataDirectoryName, formatted_now, GlobalDataFileName)
 			destination, err := os.Create(destination_file_name)
 			if err != nil {
 				logger.Fatalln("Error creating copy:", err)
@@ -323,35 +310,36 @@ func Run() {
 
 	// Init people
 	{
-		DecodeData(logger, global_data_file_name)
-		if !global_people_initialized {
+		people_initialized, local_storage_key_initialized =
+			DecodeData(logger, GlobalDataFileName, GlobalPerson, &people, &local_storage_key)
+		if !people_initialized {
 			logger.Println("Initialize people.")
-			ShufflePeople(seeded_rand, global_people, logger)
+			ShufflePeople(seeded_rand, people, logger)
 
-			for index := range global_people {
+			for index := range people {
 				// NOTE(luca): since javascript cannot handle big numbers we crop them
-				global_people[index].Token = seeded_rand.Int63() / 10000
+				people[index].Token = seeded_rand.Int63() / 10000
 			}
 
-			global_people_initialized = true
+			people_initialized = true
 		}
 
 	}
 
- if save {
-  did_work = true
- }
+	if save {
+		did_work = true
+	}
 
 	if len(add_person) > 0 {
-		global_people = append(global_people, Person{Name: add_person})
-		fmt.Println(global_people)
+		people = append(people, Person{Name: add_person})
+		fmt.Println(people)
 		did_work = true
 	}
 
 	if len(remove_person) > 0 {
-		for index, person := range global_people {
+		for index, person := range people {
 			if person.Name == remove_person {
-				global_people = append(global_people[:index], global_people[index+1:]...)
+				people = append(people[:index], people[index+1:]...)
 				break
 			}
 		}
@@ -361,12 +349,12 @@ func Run() {
 
 	if reset_tokens {
 		did_work = true
-  // NOTE(luca): Users will need to pick again
-  global_local_storage_key_initialized = false
+		// NOTE(luca): Users will need to pick again
+		local_storage_key_initialized = false
 
-		for index := range global_people {
+		for index := range people {
 			// NOTE(luca): since javascript cannot handle big numbers we crop them
-			global_people[index].Token = seeded_rand.Int63() / 10000
+			people[index].Token = seeded_rand.Int63() / 10000
 		}
 
 		logger.Println("reset tokens.")
@@ -374,20 +362,20 @@ func Run() {
 
 	if unpickall {
 		did_work = true
-		for index := range global_people {
-			global_people[index].HasPicked = false
+		for index := range people {
+			people[index].HasPicked = false
 		}
 		logger.Println("Unpicked all.")
 	}
 
 	if shuffle {
 		did_work = true
-		ShufflePeople(seeded_rand, global_people, logger)
+		ShufflePeople(seeded_rand, people, logger)
 		logger.Println("Shuffled people.")
 	}
 
 	if show_people {
-		for _, person := range global_people {
+		for _, person := range people {
 			fmt.Printf("%12s [%15d] %t\n", person.Name, person.Token, person.HasPicked)
 		}
 	}
@@ -395,7 +383,7 @@ func Run() {
 	if len(unpick) > 0 {
 		did_work = true
 		logger.Println("unpick:", unpick)
-		found, person := FindPersonByName(global_people, unpick)
+		found, person := FindPersonByName(people, unpick)
 		if found {
 			person.HasPicked = false
 			logger.Println(person)
@@ -406,23 +394,23 @@ func Run() {
 
 	if set_local_storage_key != 0 {
 		did_work = true
-		global_local_storage_key = set_local_storage_key
-		global_local_storage_key_initialized = true
+		local_storage_key = set_local_storage_key
+		local_storage_key_initialized = true
 	}
 
- if !global_local_storage_key_initialized {
-  logger.Println("Initialize local storage key.")
-  global_local_storage_key = rand.Int63()
-  global_local_storage_key_initialized = true
- }
+	if !local_storage_key_initialized {
+		logger.Println("Initialize local storage key.")
+		local_storage_key = rand.Int63()
+		local_storage_key_initialized = true
+	}
 
 	if serve {
 		did_work = true
-		logger.Println("local storage key:", global_local_storage_key)
-		logger.Println(global_people)
+		logger.Println("local storage key:", local_storage_key)
+		logger.Println(people)
 
-		for index := range global_people {
-			fmt.Print(global_people[index].Other)
+		for index := range people {
+			fmt.Print(people[index].Other)
 		}
 		fmt.Print("\n")
 
@@ -432,7 +420,7 @@ func Run() {
 			<-c
 
 			if did_work {
-				EncodeData(logger, global_data_file_name)
+				EncodeData(logger, GlobalDataFileName, GlobalPerson, local_storage_key, people)
 			}
 
 			logger.Println("data saved.")
@@ -448,7 +436,7 @@ func Run() {
 				token := request.FormValue("token")
 
 				logger.Println("Edit wishlist of", name)
-				found, person := FindPersonByName(global_people, name)
+				found, person := FindPersonByName(people, name)
 
 				if found {
 					tokenString := strconv.FormatInt(person.Token, 10)
@@ -461,25 +449,25 @@ func Run() {
 						HttpError(logger, "invalid token", person, writer, request)
 					}
 				} else {
-					HttpError(logger, "no such person", &nil_person, writer, request)
+					HttpError(logger, "no such person", &GlobalNilPerson, writer, request)
 				}
 			} else if request.Method == http.MethodGet {
 				params := request.URL.Query()
 				name := params.Get("name")
 				token := params.Get("token")
 
-				found, person := FindPersonByName(global_people, name)
+				found, person := FindPersonByName(people, name)
 
 				if found {
 					tokenString := strconv.FormatInt(person.Token, 10)
 
 					if token == tokenString {
-						fmt.Fprint(writer, global_people[person.Other].Wishlist)
+						fmt.Fprint(writer, people[person.Other].Wishlist)
 					} else {
 						HttpError(logger, "invalid token", person, writer, request)
 					}
 				} else {
-					HttpError(logger, "no such person", &nil_person, writer, request)
+					HttpError(logger, "no such person", &GlobalNilPerson, writer, request)
 				}
 			}
 		})
@@ -487,7 +475,7 @@ func Run() {
 		http.HandleFunc("/choose/", func(writer http.ResponseWriter, request *http.Request) {
 			params := request.URL.Query()
 			name := params.Get("name")
-			found, person := FindPersonByName(global_people, name)
+			found, person := FindPersonByName(people, name)
 			if found {
 				if !person.HasPicked {
 					person.HasPicked = true
@@ -498,7 +486,7 @@ func Run() {
 						OtherName     string
 						OtherWishlist string
 					}
-					other_person := global_people[person.Other]
+					other_person := people[person.Other]
 
 					response := Response{person.Token, person.Wishlist, other_person.Name, other_person.Wishlist}
 
@@ -507,18 +495,18 @@ func Run() {
 					HttpError(logger, "person already picked", person, writer, request)
 				}
 			} else {
-				HttpError(logger, "no such person", &nil_person, writer, request)
+				HttpError(logger, "no such person", &GlobalNilPerson, writer, request)
 			}
 		})
 
 		// Execute the template before-hand since the contents won't change.
-		response := TemplateToString(global_page_html, global_people, internal)
+		response := TemplateToString(GlobalPageHTML, people, local_storage_key, internal)
 		http.HandleFunc("/", func(writer http.ResponseWriter, request *http.Request) {
 			if slow {
-				buffer, err := os.ReadFile("index.tmpl.html")
+				buffer, err := os.ReadFile("./code/index.tmpl.html")
 				if err == nil {
 					file_contents := string(buffer)
-					response = TemplateToString(file_contents, global_people, internal)
+					response = TemplateToString(file_contents, people, local_storage_key, internal)
 				} else {
 					logger.Println(err)
 				}
@@ -541,7 +529,7 @@ func Run() {
 	}
 
 	if did_work {
-		EncodeData(logger, global_data_file_name)
+		EncodeData(logger, GlobalDataFileName, GlobalPerson, local_storage_key, people)
 	}
 
 	return
