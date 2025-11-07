@@ -5,28 +5,22 @@
 //
 // Run it with `go run .`
 //
+//- TODOs
+// TODO(luca): De-Duplicate backups
+// - Scan backups folder, find duplicates and deduplicate them?
+// - non-issue if compressed?
 //
-// TODOs
+// TODO(luca): Different devices support:
+// - People want to access the app from multiple devices
+// - There must be an easier way to do this than copy a 16digit long token (which they need)
 //
-// TODO: Command line flags
-// - serve to serve it
-// - unpick to unpick all
-// - editor (to have one where i can edit the gob file manually)
+// - One-Time-Code, generated from logged in device
+//   - To prevent people from hacking it: -> if one wrong code is sent a new one must be requested
+//   - Has the same effect as `/choose` on another device
 //
-// TODO: Make it safer by doing this.
-// 1. Have no ID
-// 2. Choose name
-// 3. Get (and store in local storage)
-// -  other person's name & list
-// -  this person's name & list
-// -  token to make requests
-// 4. Set this ID picked on server
+// TODO(luca): If someone's want to access from another device his wishlist won't be synced,
+// so we must provide a way to get your own wishlist.
 //
-// -> This data is used to know if the person has picked or not.
-//
-// 1. Already have an ID (in local storage)
-// 2. Get
-// - Wishlists (for sync)
 
 package noelan
 
@@ -60,15 +54,18 @@ type Person struct {
 	Token     int64
 }
 
-//- Globals
+// - Globals
+//
 //go:embed index.tmpl.html
 var GlobalPageHTML string
+
 const GlobalDataFileName = "people.gob"
 const GlobalDataDirectoryName = "gobs"
 const GlobalPerson int = 2
+
 var GlobalNilPerson = Person{}
 
-//- Serializing
+// - Serializing
 func EncodeWrapper(encoder *gob.Encoder, value any, logger *log.Logger) {
 	if err := encoder.Encode(value); err != nil {
 		logger.Fatalln(err)
@@ -133,7 +130,7 @@ func DecodeData(logger *log.Logger, file_name string, version int, people *[]Per
 	return people_decoded, local_storage_key_decoded
 }
 
-//- Person
+// - Person
 func (person Person) String() string {
 	var digits string
 	if person.Token > 99999 {
@@ -145,7 +142,7 @@ func (person Person) String() string {
 	return fmt.Sprintf("%s_%s(%t)", person.Name, digits, person.HasPicked)
 }
 
-//- Helpers
+// - Helpers
 func TemplateToString(template_contents string, people []Person, local_storage_key int64, internal bool) string {
 	var buf strings.Builder
 	template_response, err := template.New("tirage").Parse(template_contents)
@@ -216,24 +213,24 @@ func HttpError(logger *log.Logger, message string, person *Person, writer http.R
 
 // - Main
 func Run() {
- var people = []Person{
-  {Name: "Nawel"},
-  {Name: "Tobias"},
-  {Name: "Luca"},
-  {Name: "Lola"},
-  {Name: "Aeris"},
-  {Name: "Lionel"},
-  {Name: "Aurélie"},
-  {Name: "Sean"},
-  {Name: "Émilie"},
-  {Name: "Yves"},
-  {Name: "Marthe"},
- }
- var local_storage_key int64
- var people_initialized = false
- var local_storage_key_initialized = false
+	var people = []Person{
+		{Name: "Nawel"},
+		{Name: "Tobias"},
+		{Name: "Luca"},
+		{Name: "Lola"},
+		{Name: "Aeris"},
+		{Name: "Lionel"},
+		{Name: "Aurélie"},
+		{Name: "Sean"},
+		{Name: "Émilie"},
+		{Name: "Yves"},
+		{Name: "Marthe"},
+	}
+	var local_storage_key int64
+	var people_initialized = false
+	var local_storage_key_initialized = false
 
- // Flags
+	// Flags
 	var did_work bool
 	var internal, slow, save bool
 	var serve, shuffle, unpickall, show_people, reset_tokens bool
