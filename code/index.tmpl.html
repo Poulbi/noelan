@@ -1,3 +1,20 @@
+{{ if false }}
+<!--
+	Documentation
+
+This is the web UI of the noelan app.
+Every "page" is just setting the whole "<body>"'s innerHTML (see setPage* functions).  This way
+we can avoid creating a network request for each page.
+
+Data is cached to local storage so that we only need to send requests to sync the data.
+The `global_all_data` object has all the data necessary for the application to work.
+
+TODO(luca): Get rid of PicoCSS, because it does not make a good responsive UI.
+
+-->
+{{ end }}
+
+
 <!DOCTYPE html>
 <html lang="fr" data-theme="dark">
  <head>
@@ -6,15 +23,22 @@
 
   <meta property="og:title" content="Cadeaux de noël 2025"/>
   <meta property="og:description" content="À qui offrir le cadeau de noël?"/>
-
   <meta property="og:image" content="/static/favicon.ico" />
 
   <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
   <style>
+
 h1 {
  display: flex;
  justify-content: center;
+}
+
+.centered {
+ display: flex;
+ justify-content: center;
+ align-items: center;
+ height: 50vh;
 }
 
 button {
@@ -29,13 +53,6 @@ button {
   gap: 1rem;
 }
 
-body {
- display: flex;
- justify-content: center;
- align-items: center;
- height: 50vh;
-}
-
 span.name {
  color: #87bfcf;
 }
@@ -45,7 +62,7 @@ textarea {
 }
 
 .fade {
-    animation: fadeOut 1s forwards; /* Duration and direction of the animation */
+    animation: fadeOut 1s forwards;
 }
         
 @keyframes fadeOut {
@@ -97,11 +114,12 @@ function findPersonByName(picking_person_name) {
 //- Pages
 function setPageChoose() {
  document.body.innerHTML = `
-  <div>
-   <h1>Qui es-tu?</h1>
-   <div class="buttons">
-   </div>
-  </div>
+		<div class="centered">
+			<div class="container">
+				<h1>Qui es-tu?</h1>
+				<div class="buttons"></div>
+			</div>
+		</div>
   `;
 
  let buttons = document.querySelector("div.buttons");
@@ -116,22 +134,31 @@ function setPageChoose() {
    button.addEventListener("click", function(event) {
     event.preventDefault();
 
+				history.pushState({home: "/"}, "", "/");
+
     let name = person.name;
     let thisPerson = findPersonByName(name);
 
     document.body.innerHTML = `
-     <h1>Tu es bien ${thisPerson.name}?</h1>
-     <div class="buttons">
-      <button id="yes">Oui</button>
-      <button id="no">Non</button>
-     </div>`;
+					<div class="centered">
+						<div class="container">
+							<h1>Tu es bien ${thisPerson.name}?</h1>
+							<div class="buttons">
+								<button id="yes">Oui</button>
+								<button id="no">Non</button>
+							</div>
+						</div>
+					</div>`;
 
     let yes_button = document.getElementById("yes");
     let no_button = document.getElementById("no");
 
     yes_button.addEventListener("click", async function(event) {
      event.preventDefault();
-     await fetch(`/choose/?name=${thisPerson.name}`)
+
+					history.pushState({home: "/"}, "", "/");
+
+     await fetch(`/api/choose/?name=${thisPerson.name}`)
       .then(function(response) {
           if (!response.ok) {
               console.error('Network response was not ok');
@@ -157,6 +184,7 @@ function setPageChoose() {
 
     no_button.addEventListener("click", function(event) {
      event.preventDefault();
+
      setPageChoose();
     });
 
@@ -166,19 +194,33 @@ function setPageChoose() {
 }
 
 function setPageOtherPerson() {
+	history.pushState({home: "/"}, "", "/");
+
  let wishlistID = "wishlist";
+	let backButtonID = "back";
+
  document.body.innerHTML = `
-  <div>
-  <h1>Tu as&nbsp;<span class="name">${global_all_data.otherName}</span>.</h1>
-  <h4>Sa liste des souhaits:</h4>
-  <textarea readonly rows="5" cols="40" id="${wishlistID}" placeholder="vide..."></textarea>
+  <div class="container">
+			<h1>Tu as&nbsp;<span class="name">${global_all_data.otherName}</span>.</h1>
+			<h4>Sa liste des souhaits:</h4>
+			<textarea readonly rows="15" cols="40" id="${wishlistID}" placeholder="Vide..."></textarea>
+			<div class="buttons">
+				<button id="${backButtonID}">retour</button>
+			</div>
   </div>
   `;
- let wishlist = document.getElementById(wishlistID);
 
+	let backButton = document.getElementById(backButtonID);
+	backButton.addEventListener("click", function(event) {
+		event.preventDefault();
+
+		setPageThisPerson();
+	});
+
+ let wishlist = document.getElementById(wishlistID);
  wishlist.textContent = global_all_data.otherWishlist;
 
- fetch(`/list/?name=${global_all_data.thisName}&token=${global_all_data.token}`)
+ fetch(`/api/list/?name=${global_all_data.thisName}&token=${global_all_data.token}`)
  .then(function(response) {
      if (!response.ok) {
          console.error('Network response was not ok');
@@ -204,20 +246,22 @@ function setPageThisPerson() {
  let writeLetterButtonID = "write-letter";
 
  document.body.innerHTML = `
-  <main class="container">
-   <h1>Noël-An de &nbsp;<span class="name">${global_all_data.thisName}</span></h1>
-   <div class="buttons">
-    <button id="${showPersonButtonID}">Voir qui j'ai choisi</button>
-    <button id="${writeLetterButtonID}">Ma liste des souhaits</button>
-   </div>
-   <h4><b>Infos:</b></h4>
-   <ul>
-    <li>Ne dévoilez à persone qui vous avez tiré au sort!</li>
-    <li>Vous pouvez écrire une liste de souhaits, la personne ayant tiré votre nom y a accès.</li>
-    <li>Il n'est pas obligé de respecter la liste ou d'en écrire une. Elle sert pour inspirer des idées de cadeaux.</li>
-    <li>Si vous avez un soucis n'hésitez-pas à me contacter !</li>
-   </ul>
-  </main>
+  <div class="centered">
+			<div class="container">
+				<h1>Noël-An de&nbsp;<span class="name">${global_all_data.thisName}</span></h1>
+				<div class="buttons">
+					<button id="${showPersonButtonID}">Voir qui j'ai choisi</button>
+					<button id="${writeLetterButtonID}">Ma liste des souhaits</button>
+				</div>
+				<h4><b>Infos:</b></h4>
+				<ul>
+					<li>Ne dévoilez à persone qui vous avez tiré au sort!</li>
+					<li>Vous pouvez écrire une liste de souhaits, la personne ayant tiré votre nom y a accès.</li>
+					<li>Il n'est pas obligé de respecter la liste ou d'en écrire une. Elle sert pour inspirer des idées de cadeaux.</li>
+					<li>Si vous avez un soucis n'hésitez-pas à me contacter !</li>
+				</ul>
+			</div>
+  </div>
   `;
 
  let showPersonButton = document.getElementById(showPersonButtonID);
@@ -231,18 +275,29 @@ function setPageThisPerson() {
  writeLetterButton.addEventListener("click", function(event) {
   event.preventDefault();
 
+		history.pushState({home: "/"}, "", "/");
+
   let sendLetterButtonID = "send-letter";
   let letterTextAreaID = "letter-text";
+		let backButtonID = "back";
 
   document.body.innerHTML = `
-   <div>
-    <h1>Liste des souhaits</h1>
-    <textarea id="${letterTextAreaID}" rows="5" cols="40" placeholder="..."></textarea>
+   <div class="container">
+			<h1><span class="name">Ma</span>&nbsp;liste des souhaits</h1>
+    <textarea id="${letterTextAreaID}" rows="15" cols="40" placeholder="Vide..."></textarea>
     <div class="buttons">
+			  <button id="${backButtonID}">retour</button>
      <button id="${sendLetterButtonID}">sauvegarder</button>
     </div>
    </div>
    `;
+
+   let backButton = document.getElementById(backButtonID);
+			backButton.addEventListener("click", function(event) {
+				event.preventDefault();
+
+				setPageThisPerson();
+			});
 
    let letterTextArea = document.getElementById(letterTextAreaID);
    letterTextArea.textContent = global_all_data.thisWishlist;
@@ -263,7 +318,7 @@ function setPageThisPerson() {
     };
     const postBody = new URLSearchParams(messageBody).toString();
 
-    fetch('/list/', {
+    fetch('/api/list/', {
      method: 'POST',
      headers:
      {
@@ -292,9 +347,9 @@ function setPageThisPerson() {
 
 //- Main
 window.onload = function() {
+	{{ if false }}
  // NOTE(luca): Users will expect going back to go to the home page so we do this manually.
- var stateObj = { home: "home" };
- history.pushState(stateObj, "home", "/");
+	{{ end }}
  window.addEventListener('popstate', function(event) {
     window.location.reload();
  });
