@@ -21,6 +21,10 @@
 // TODO(luca): If someone's want to access from another device his wishlist won't be synced,
 // so we must provide a way to get your own wishlist.
 //
+// TODO(luca): Reimplement missing features.
+// Since we only have one page we lose following functionality of the browser.
+// - native navigation through history of urls
+// - control+click to open in a new page
 
 package noelan
 
@@ -406,11 +410,6 @@ func Run() {
 		logger.Println("local storage key:", local_storage_key)
 		logger.Println(people)
 
-		for index := range people {
-			fmt.Print(people[index].Other)
-		}
-		fmt.Print("\n")
-
 		go func() {
 			c := make(chan os.Signal, 1)
 			signal.Notify(c, os.Interrupt)
@@ -426,7 +425,7 @@ func Run() {
 
 		http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./assets"))))
 
-		http.HandleFunc("/list/", func(writer http.ResponseWriter, request *http.Request) {
+		http.HandleFunc("/api/list/", func(writer http.ResponseWriter, request *http.Request) {
 			if request.Method == http.MethodPost {
 				name := request.FormValue("name")
 				text := request.FormValue("text")
@@ -469,7 +468,7 @@ func Run() {
 			}
 		})
 
-		http.HandleFunc("/choose/", func(writer http.ResponseWriter, request *http.Request) {
+		http.HandleFunc("/api/choose/", func(writer http.ResponseWriter, request *http.Request) {
 			params := request.URL.Query()
 			name := params.Get("name")
 			found, person := FindPersonByName(people, name)
