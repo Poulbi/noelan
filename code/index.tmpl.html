@@ -81,7 +81,7 @@ textarea {
 //- Globals
 let people =
 [{{ range .People }}
- {"name": "{{.Name}}", "has_picked": {{.HasPicked}},}, {{ end }}
+ {"name": "{{.Name}}", "has_picked": {{.HasPicked}}}, {{ end }}
 ];
 
 let local_storage_key = "{{.Key}}";
@@ -220,7 +220,7 @@ function setPageOtherPerson() {
  let wishlist = document.getElementById(wishlistID);
  wishlist.textContent = global_all_data.otherWishlist;
 
- fetch(`/api/list/?name=${global_all_data.thisName}&token=${global_all_data.token}`)
+	fetch(`/api/list/?user=${global_all_data.thisName}&name=${global_all_data.otherName}&token=${global_all_data.token}`)
  .then(function(response) {
      if (!response.ok) {
          console.error('Network response was not ok');
@@ -231,7 +231,7 @@ function setPageOtherPerson() {
   if(wishlist.textContent != response)
   {
    global_all_data.otherWishlist = response;
-   wishlist.textContent = global_all_data.otherWishlist;
+   wishlist.textContent = response;
    localStorage.setItem(local_storage_key, JSON.stringify(global_all_data));
   }
  })
@@ -301,6 +301,26 @@ function setPageThisPerson() {
 
    let letterTextArea = document.getElementById(letterTextAreaID);
    letterTextArea.textContent = global_all_data.thisWishlist;
+
+			fetch(`/api/list/?user=${global_all_data.thisName}&name=${global_all_data.thisName}&token=${global_all_data.token}`)
+			.then(function(response) {
+							if (!response.ok) {
+											console.error('Network response was not ok');
+							}
+							return response.text();
+			})
+			.then(function(response) {
+				if(wishlist.textContent != response)
+				{
+					global_all_data.thisWishlist = response;
+					letterTextArea.textContent = response;
+					localStorage.setItem(local_storage_key, JSON.stringify(global_all_data));
+				}
+			})
+			.catch(function(error) {
+							console.error('There was a problem with the fetch operation:', error);
+			});
+
 
    let sendLetterButton = document.getElementById(sendLetterButtonID);
    sendLetterButton.addEventListener("click", function(event) {
