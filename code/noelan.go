@@ -34,6 +34,7 @@
 // - detect when you are offline
 // - display a tooltip saying that you are offline
 // TODO(luca): Remove names from here and add them through a config file
+// TODO(luca): Stupid / for scrapers & robots.txt
 
 package noelan
 
@@ -45,6 +46,7 @@ import (
 	"flag"
 	"fmt"
 	"html/template"
+	"math"
 	"math/rand"
 	"net/http"
 	"os/signal"
@@ -65,6 +67,9 @@ type Person struct {
 	Wishlist  string
 	HasPicked bool
 	Token     int64
+
+	Code      string
+	CodeIsValid bool
 }
 
 // - Globals
@@ -75,6 +80,15 @@ var GlobalPageHTML string
 const GlobalDataFileName = "people.gob"
 const GlobalDataDirectoryName = "gobs"
 const GlobalPerson int = 2
+
+var GlobalMessages = map[string]string{
+	"NotImplemented":        "Not implemented yet",
+	"InvalidPersonAndToken": "Invalid person and token combination",
+	"NoSuchPerson":          "No such person",
+	"PersonAlreadyPicked":   "Person already picked",
+	"InvalidPerson":         "Invalid person",
+	"InvalidCode":           "Invalid code",
+}
 
 var GlobalNilPerson = Person{}
 
@@ -182,21 +196,24 @@ func TemplateToString(template_contents string, people []Person, local_storage_k
 			}
 		}
 
-		if has_picked_count < len(people) {
-			err = template_response.ExecuteTemplate(&buf, "tirage", page_data)
-			if err != nil {
-				fmt.Println(err)
-			}
-			response = buf.String()
+		if has_picked_count >= len(people) {
+			page_data.People = []Person{}
+		}
+
+		err = template_response.ExecuteTemplate(&buf, "tirage", page_data)
+		if err != nil {
+			fmt.Println(err)
 		}
 	}
+
+	response = buf.String()
 
 	return response
 }
 
 func FindPersonByName(people []Person, name string) (bool, *Person) {
-	var found_person *Person
-	var found bool
+	found_person := &GlobalNilPerson
+	found := false
 
 	for index, value := range people {
 		if name == value.Name {
@@ -207,6 +224,20 @@ func FindPersonByName(people []Person, name string) (bool, *Person) {
 	}
 
 	return found, found_person
+}
+
+func FindPersonByNameAndValidate(people []Person, name string, token string) (bool, *Person) {
+	found, person := FindPersonByName(people, name)
+
+	if found {
+		tokenString := strconv.FormatInt(person.Token, 10)
+		if token != tokenString {
+			found = false
+			person = &GlobalNilPerson
+		}
+	}
+
+	return found, person
 }
 
 func ShufflePeople(rand *rand.Rand, people []Person, logger *log.Logger) {
@@ -235,27 +266,22 @@ func ShufflePeople(rand *rand.Rand, people []Person, logger *log.Logger) {
 }
 
 func HttpError(logger *log.Logger, message string, person *Person, writer http.ResponseWriter, request *http.Request) {
-	logger.Printf("ERROR: for %s: %s | %s %s %s %s\n",
-		person.Name, message,
-		request.RemoteAddr, request.Method, request.URL, request.Form)
-		http.Error(writer, "ERROR: " + message, http.StatusNotFound)
+	if person == &GlobalNilPerson {
+		logger.Printf("ERROR: %s | %s %s %s %s\n",
+			message,
+			request.RemoteAddr, request.Method, request.URL, request.Form)
+	} else {
+		logger.Printf("ERROR: for %s: %s | %s %s %s %s\n",
+			person.Name, message,
+			request.RemoteAddr, request.Method, request.URL, request.Form)
+	}
+
+	http.Error(writer, "ERROR: "+message, http.StatusNotFound)
 }
 
 // - Main
 func Run() {
-	var people = []Person{
-		{Name: "Nawel"},
-		{Name: "Tobias"},
-		{Name: "Luca"},
-		{Name: "Lola"},
-		{Name: "Aeris"},
-		{Name: "Lionel"},
-		{Name: "Aurélie"},
-		{Name: "Sean"},
-		{Name: "Émilie"},
-		{Name: "Yves"},
-		{Name: "Marthe"},
-	}
+	var people = GlobalDefaultPeople 
 	var local_storage_key int64
 	var people_initialized = false
 	var local_storage_key_initialized = false
@@ -463,21 +489,16 @@ func Run() {
 				text := request.FormValue("text")
 				token := request.FormValue("token")
 
-				logger.Println("Edit wishlist of", name)
-				found, person := FindPersonByName(people, name)
+				found, person := FindPersonByNameAndValidate(people, name, token)
 
 				if found {
-					tokenString := strconv.FormatInt(person.Token, 10)
-					if token == tokenString {
-						person.Wishlist = text
-						person.HasPicked = true
+					logger.Println("Edit wishlist of", name)
+					fmt.Printf("text: %#v\n", text)
+					person.Wishlist = text
 
-						fmt.Fprintln(writer, "ok")
-					} else {
-						HttpError(logger, "invalid token", person, writer, request)
-					}
+					fmt.Fprintln(writer, "ok")
 				} else {
-					HttpError(logger, "no such person", &GlobalNilPerson, writer, request)
+					HttpError(logger, GlobalMessages["InvalidPersonAndToken"], person, writer, request)
 				}
 			} else if request.Method == http.MethodGet {
 				// @api_notes
@@ -491,28 +512,18 @@ func Run() {
 				name := params.Get("name")
 				token := params.Get("token")
 
-				found, person := FindPersonByName(people, user)
-
+				found, person := FindPersonByNameAndValidate(people, user, token)
 				if found {
-					tokenString := strconv.FormatInt(person.Token, 10)
-
-					if token == tokenString {
-						
-						var response string
-						if people[person.Other].Name == name {
-							response = people[person.Other].Wishlist
-							fmt.Fprint(writer, response)
-						} else if person.Name == user {
-							response = person.Wishlist
-							fmt.Fprint(writer, response)
-						} else {
-							HttpError(logger, "invalid person: "+name, person, writer, request)
-						}
+					if people[person.Other].Name == name {
+						fmt.Fprint(writer, people[person.Other].Wishlist)
+					} else if person.Name == user {
+						fmt.Fprint(writer, person.Wishlist)
 					} else {
-						HttpError(logger, "invalid token", person, writer, request)
+						HttpError(logger, GlobalMessages["InvalidPerson"]+": "+name, person, writer, request)
 					}
+
 				} else {
-					HttpError(logger, "no such person", &GlobalNilPerson, writer, request)
+					HttpError(logger, GlobalMessages["InvalidPersonAndToken"], person, writer, request)
 				}
 			}
 		})
@@ -537,11 +548,65 @@ func Run() {
 
 					json.NewEncoder(writer).Encode(response)
 				} else {
-					HttpError(logger, "person already picked", person, writer, request)
+					HttpError(logger, GlobalMessages["PersonAlreadyPicked"], person, writer, request)
 				}
 			} else {
-				HttpError(logger, "no such person", &GlobalNilPerson, writer, request)
+				HttpError(logger, GlobalMessages["NoSuchPerson"], person, writer, request)
 			}
+		})
+
+		http.HandleFunc("/api/pin/", func(writer http.ResponseWriter, request *http.Request) {
+			if request.Method == http.MethodGet {
+
+				params := request.URL.Query()
+				name := params.Get("name")
+				token := params.Get("token")
+				found, person := FindPersonByNameAndValidate(people, name, token)
+				if found {
+					logger.Println("Request pin for", person.Name)
+
+					t := seeded_rand.Float64()
+					// Linear interpolate code to get value between 0 - 999999 and then convert to string with padded zeroes
+					person.Code = fmt.Sprintf("%06d", int(math.Round((t+0)*(999999))))
+					person.CodeIsValid = true
+
+					fmt.Fprint(writer, person.Code)
+				} else {
+					HttpError(logger, GlobalMessages["InvalidPersonAndToken"], person, writer, request)
+				}
+
+			} else if request.Method == http.MethodPost {
+
+				name := request.FormValue("name")
+				code := request.FormValue("code")
+
+				found, person := FindPersonByName(people, name)
+				if found {
+
+					if person.CodeIsValid && code == person.Code {
+						logger.Println("Pin login for", person.Name)
+
+						type Response struct {
+							Token         int64
+							ThisWishlist  string
+							OtherName     string
+							OtherWishlist string
+						}
+
+						other := people[person.Other]
+						response := Response{Token: person.Token, ThisWishlist: person.Wishlist, OtherName: other.Name, OtherWishlist: other.Wishlist}
+						json.NewEncoder(writer).Encode(response)
+
+						person.CodeIsValid = false
+					} else {
+						person.CodeIsValid = false
+						HttpError(logger, GlobalMessages["InvalidCode"], person, writer, request)
+					}
+				} else {
+					HttpError(logger, GlobalMessages["InvalidPerson"], person, writer, request)
+				}
+			}
+
 		})
 
 		// Execute the template before-hand since the contents won't change.
@@ -570,7 +635,6 @@ func Run() {
 		if err := http.ListenAndServe(address, nil); err != nil {
 			panic(err)
 		}
-
 	}
 
 	if did_work {
