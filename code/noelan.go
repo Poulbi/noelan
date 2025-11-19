@@ -25,6 +25,15 @@
 // Since we only have one page we lose following functionality of the browser.
 // - native navigation through history of urls
 // - control+click to open in a new page
+//
+// x In PageData that is sent to the client, only send people's name who have not clicked yet.
+// x Synchronization for your own wishlist
+//
+// TODO(luca): No backup option
+// TODO(luca): Offline mode
+// - detect when you are offline
+// - display a tooltip saying that you are offline
+// TODO(luca): Remove names from here and add them through a config file
 
 package noelan
 
@@ -148,7 +157,9 @@ func (person Person) String() string {
 
 // - Helpers
 func TemplateToString(template_contents string, people []Person, local_storage_key int64, internal bool) string {
+	var response string
 	var buf strings.Builder
+
 	template_response, err := template.New("tirage").Parse(template_contents)
 	if err != nil {
 		fmt.Println(err)
@@ -159,11 +170,26 @@ func TemplateToString(template_contents string, people []Person, local_storage_k
 		Key      int64
 		Internal bool
 	}
-	err = template_response.ExecuteTemplate(&buf, "tirage", PageData{People: people, Key: local_storage_key, Internal: internal})
-	if err != nil {
-		fmt.Println(err)
+
+	page_data := PageData{People: people, Key: local_storage_key, Internal: internal}
+
+	// NOTE(luca): Count people whow have picked, only send the people if some are remaining that haven't picked
+	{
+		has_picked_count := 0
+		for index := range people {
+			if people[index].HasPicked {
+				has_picked_count += 1
+			}
+		}
+
+		if has_picked_count < len(people) {
+			err = template_response.ExecuteTemplate(&buf, "tirage", page_data)
+			if err != nil {
+				fmt.Println(err)
+			}
+			response = buf.String()
+		}
 	}
-	response := buf.String()
 
 	return response
 }
@@ -209,10 +235,10 @@ func ShufflePeople(rand *rand.Rand, people []Person, logger *log.Logger) {
 }
 
 func HttpError(logger *log.Logger, message string, person *Person, writer http.ResponseWriter, request *http.Request) {
-	logger.Printf("Error for %s: %s | %s %s %s %s\n",
+	logger.Printf("ERROR: for %s: %s | %s %s %s %s\n",
 		person.Name, message,
 		request.RemoteAddr, request.Method, request.URL, request.Form)
-	http.Error(writer, message, http.StatusNotFound)
+		http.Error(writer, "ERROR: " + message, http.StatusNotFound)
 }
 
 // - Main
@@ -401,7 +427,7 @@ func Run() {
 
 	if !local_storage_key_initialized {
 		logger.Println("Initialize local storage key.")
-		local_storage_key = rand.Int63()
+		local_storage_key = seeded_rand.Int63()
 		local_storage_key_initialized = true
 	}
 
@@ -427,6 +453,12 @@ func Run() {
 
 		http.HandleFunc("/api/list/", func(writer http.ResponseWriter, request *http.Request) {
 			if request.Method == http.MethodPost {
+				// @api_notes
+				// POST /api/list/
+				// Form values:
+				//  - name: username
+				//  - text: new text for wishlist
+				//  - token: token user string
 				name := request.FormValue("name")
 				text := request.FormValue("text")
 				token := request.FormValue("token")
@@ -448,17 +480,34 @@ func Run() {
 					HttpError(logger, "no such person", &GlobalNilPerson, writer, request)
 				}
 			} else if request.Method == http.MethodGet {
+				// @api_notes
+				// GET /api/list/
+				// Url params:
+				//  - user: username
+				//  - name: requestee's wishlist
+				//  - token: token user string
 				params := request.URL.Query()
+				user := params.Get("user")
 				name := params.Get("name")
 				token := params.Get("token")
 
-				found, person := FindPersonByName(people, name)
+				found, person := FindPersonByName(people, user)
 
 				if found {
 					tokenString := strconv.FormatInt(person.Token, 10)
 
 					if token == tokenString {
-						fmt.Fprint(writer, people[person.Other].Wishlist)
+						
+						var response string
+						if people[person.Other].Name == name {
+							response = people[person.Other].Wishlist
+							fmt.Fprint(writer, response)
+						} else if person.Name == user {
+							response = person.Wishlist
+							fmt.Fprint(writer, response)
+						} else {
+							HttpError(logger, "invalid person: "+name, person, writer, request)
+						}
 					} else {
 						HttpError(logger, "invalid token", person, writer, request)
 					}
