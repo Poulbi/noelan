@@ -291,7 +291,7 @@ func Run() {
 	var internal, slow, save bool
 	var serve, shuffle, unpickall, show_people, reset_tokens bool
 	var add_person, remove_person, unpick string
-	var set_local_storage_key int64
+	var set_local_storage_key, set_seed int64
 
 	flag.BoolVar(&internal, "internal", false, "run commands in internal mode")
 	flag.BoolVar(&slow, "slow", false, "run commands in slow mode")
@@ -304,16 +304,18 @@ func Run() {
 	flag.StringVar(&remove_person, "remove_person", "", "remove person by name")
 	flag.StringVar(&unpick, "unpick", "", "unpick person by name")
 	flag.Int64Var(&set_local_storage_key, "set_local_storage_key", 0, "Set the local storage key")
+	flag.Int64Var(&set_seed, "set_seed", 0, "Set the random seed")
 	flag.BoolVar(&serve, "serve", false, "run http server")
 
 	flag.Parse()
 
 	logger := log.New(os.Stdout, "[noel] ", log.Ldate|log.Ltime)
 	var seed int64
-	if internal {
-		seed = rand.Int63()
+	// NOTE(luca): Since we use the 
+	if set_seed != 0 {
+		seed = set_seed
 	} else {
-		seed = 7967946373046491984
+		seed = rand.Int63()
 	}
 	logger.Println("seed:", seed)
 	source := rand.NewSource(seed)
