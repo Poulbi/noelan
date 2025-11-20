@@ -1,4 +1,5 @@
-{{ if false }}
+<!DOCTYPE html>
+{{ if .Internal }}
 <!--
 	Documentation
 
@@ -15,9 +16,6 @@ TODO(luca): Check error messages maybe sending too much information. (e.g., "inv
 
 -->
 {{ end }}
-
-
-<!DOCTYPE html>
 <html lang="fr" data-theme="dark">
  <head>
   <meta charset="UTF-8">
@@ -142,13 +140,13 @@ function setPageChoose() {
 
  document.body.innerHTML = `
 		<div id="pin-login">
-		<form>
-			<fieldset role="group">
-				<input id="${pinLoginNameID}" type="text" placeholder="Nom">
-				<input id="${pinLoginCodeID}" type="text" placeholder="Code">
-				<input id="${pinLoginButtonID}" type="submit" value="connecter">
-			</fieldset>
-		</form>
+			<form>
+				<fieldset role="group">
+					<input id="${pinLoginNameID}" type="text" placeholder="Nom">
+					<input id="${pinLoginCodeID}" type="text" placeholder="Code">
+					<input id="${pinLoginButtonID}" type="submit" value="connecter">
+				</fieldset>
+			</form>
 		</div>
 
 		<div class="centered">
@@ -199,6 +197,7 @@ function setPageChoose() {
       .then(function(response) {
           if (!response.ok) {
               console.error('Network response was not ok');
+											        const textElement = document.createElement('div');
           }
           return response.json();
       })
@@ -254,7 +253,16 @@ function setPageChoose() {
 		})
 		.then(function(response) {
 			if (!response.ok) {
-					console.error('Network response was not ok');
+				console.error('Network response was not ok');
+
+				const textElement = document.createElement('div');
+				textElement.textContent = 'Erreur';
+				textElement.classList.add('fade');
+				let buttons = document.querySelector("div#pin-login > form");
+					buttons.appendChild(textElement);
+					setTimeout(function() {
+								textElement.remove();
+					}, 1000);
 			}
 			return response.json();
 		})
@@ -418,7 +426,7 @@ function setPageThisPerson() {
 							return response.text();
 			})
 			.then(function(response) {
-				{{ if false }}
+				{{ if .Internal }}
 				console.log("response:", response);
 				console.log(typeof(response));
 				console.log("wishlist.value:", wishlist.value);
@@ -441,7 +449,7 @@ function setPageThisPerson() {
    sendWishlistButton.addEventListener("click", function(event) {
     event.preventDefault();
 
-				{{ if false }}
+				{{ if .Internal }}
     console.log("Sending list of", global_all_data.thisName);
 				console.log("content:", wishlist.value);
 				{{ end }}
@@ -485,7 +493,7 @@ function setPageThisPerson() {
 
 //- Main
 window.onload = function() {
-	{{ if false }}
+	{{ if .Internal }}
  // NOTE(luca): Users will expect going back to go to the home page so we do this manually.
 	{{ end }}
  window.addEventListener('popstate', function(event) {
