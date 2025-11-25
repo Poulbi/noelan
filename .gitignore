@@ -1,4 +1,8 @@
-tmp
-people.gob
-gobs
+tmp/
+gobs/
+
 noelan
+people.gob
+
+code/people.go
+
