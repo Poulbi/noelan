@@ -1,7 +1,7 @@
 package main
 
-import "noelan/code"
+import . "feedback/code"
 
 func main() {
- noelan.Run()
+ Run()
 }

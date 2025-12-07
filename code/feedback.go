@@ -1,42 +1,4 @@
-// Documentation
-//
-// Secret santa app that's random so people don't have to worry about the picking process.
-// No emails or login, just use the domain.
-//
-// Run it with `go run .`
-//
-//- TODOs
-// TODO(luca): De-Duplicate backups
-// - Scan backups folder, find duplicates and deduplicate them?
-// - non-issue if compressed?
-//
-// TODO(luca): Different devices support:
-// - People want to access the app from multiple devices
-// - There must be an easier way to do this than copy a 16digit long token (which they need)
-//
-// - One-Time-Code, generated from logged in device
-//   - To prevent people from hacking it: -> if one wrong code is sent a new one must be requested
-//   - Has the same effect as `/choose` on another device
-//
-// TODO(luca): If someone's want to access from another device his wishlist won't be synced,
-// so we must provide a way to get your own wishlist.
-//
-// TODO(luca): Reimplement missing features.
-// Since we only have one page we lose following functionality of the browser.
-// - native navigation through history of urls
-// - control+click to open in a new page
-//
-// x In PageData that is sent to the client, only send people's name who have not clicked yet.
-// x Synchronization for your own wishlist
-//
-// TODO(luca): No backup option
-// TODO(luca): Offline mode
-// - detect when you are offline
-// - display a tooltip saying that you are offline
-// TODO(luca): Remove names from here and add them through a config file
-// TODO(luca): Stupid / for scrapers & robots.txt
-
-package noelan
+package feedback
 
 //- Libraries
 import (
@@ -64,7 +26,7 @@ import (
 type Person struct {
 	Name      string
 	Other     int
-	Wishlist  string
+	Feedback  string
 	HasPicked bool
 	Token     int64
 
@@ -211,6 +173,18 @@ func TemplateToString(template_contents string, people []Person, local_storage_k
 	return response
 }
 
+func findThisFeedback(people []Person, user string) (string) {
+	var result string
+
+	for _, person := range people {
+		if user == people[person.Other].Name {
+			result = person.Feedback
+		}
+	}
+
+	return result
+}
+
 func FindPersonByName(people []Person, name string) (bool, *Person) {
 	found_person := &GlobalNilPerson
 	found := false
@@ -309,7 +283,7 @@ func Run() {
 
 	flag.Parse()
 
-	logger := log.New(os.Stdout, "[noel] ", log.Ldate|log.Ltime)
+	logger := log.New(os.Stdout, "[feedback] ", log.Ldate|log.Ltime)
 	var seed int64
 	// NOTE(luca): Since we use the 
 	if set_seed != 0 {
@@ -485,7 +459,7 @@ func Run() {
 				// POST /api/list/
 				// Form values:
 				//  - name: username
-				//  - text: new text for wishlist
+				//  - text: new text for feedback
 				//  - token: token user string
 				name := request.FormValue("name")
 				text := request.FormValue("text")
@@ -494,9 +468,8 @@ func Run() {
 				found, person := FindPersonByNameAndValidate(people, name, token)
 
 				if found {
-					logger.Println("Edit wishlist of", name)
-					fmt.Printf("text: %#v\n", text)
-					person.Wishlist = text
+					logger.Println("Edit feedback of", name)
+					person.Feedback = text
 
 					fmt.Fprintln(writer, "ok")
 				} else {
@@ -507,7 +480,7 @@ func Run() {
 				// GET /api/list/
 				// Url params:
 				//  - user: username
-				//  - name: requestee's wishlist
+				//  - name: requestee's feedback
 				//  - token: token user string
 				params := request.URL.Query()
 				user := params.Get("user")
@@ -516,10 +489,12 @@ func Run() {
 
 				found, person := FindPersonByNameAndValidate(people, user, token)
 				if found {
+					person.HasPicked = true
 					if people[person.Other].Name == name {
-						fmt.Fprint(writer, people[person.Other].Wishlist)
+						thisFeedback := findThisFeedback(people, user)
+						fmt.Fprint(writer, thisFeedback)
 					} else if person.Name == user {
-						fmt.Fprint(writer, person.Wishlist)
+						fmt.Fprint(writer, person.Feedback)
 					} else {
 						HttpError(logger, GlobalMessages["InvalidPerson"]+": "+name, person, writer, request)
 					}
@@ -540,13 +515,14 @@ func Run() {
 
 					type Response struct {
 						Token         int64
-						ThisWishlist  string
+						ThisFeedback  string
 						OtherName     string
-						OtherWishlist string
+						OtherFeedback string
 					}
-					other_person := people[person.Other]
+					other := people[person.Other]
 
-					response := Response{person.Token, person.Wishlist, other_person.Name, other_person.Wishlist}
+					thisFeedback := findThisFeedback(people, person.Name)
+					response := Response{person.Token, person.Feedback, other.Name, thisFeedback}
 
 					json.NewEncoder(writer).Encode(response)
 				} else {
@@ -590,13 +566,14 @@ func Run() {
 
 						type Response struct {
 							Token         int64
-							ThisWishlist  string
+							ThisFeedback  string
 							OtherName     string
-							OtherWishlist string
+							OtherFeedback string
 						}
 
 						other := people[person.Other]
-						response := Response{Token: person.Token, ThisWishlist: person.Wishlist, OtherName: other.Name, OtherWishlist: other.Wishlist}
+						thisFeedback := findThisFeedback(people, person.Name)
+						response := Response{person.Token, other.Feedback, other.Name, thisFeedback}
 						json.NewEncoder(writer).Encode(response)
 
 						person.CodeIsValid = false

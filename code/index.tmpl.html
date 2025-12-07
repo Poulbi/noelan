@@ -3,12 +3,12 @@
 <!--
 	Documentation
 
-This is the web UI of the noelan app.
+This is the web UI of the feedback app.
 Every "page" is just setting the whole "<body>"'s innerHTML (see setPage* functions).  This way
 we can avoid creating a network request for each page.
 
 Data is cached to local storage so that we only need to send requests to sync the data.
-The `global_all_data` object has all the data necessary for the application to work.
+The `context` object has all the data necessary for the application to work.
 
 TODO(luca): Get rid of PicoCSS, because it does not make a good responsive UI.
 
@@ -21,8 +21,8 @@ TODO(luca): Check error messages maybe sending too much information. (e.g., "inv
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <meta property="og:title" content="Cadeaux de noël 2025"/>
-  <meta property="og:description" content="À qui offrir le cadeau de noël?"/>
+  <meta property="og:title" content="Feedback JNM"/>
+  <meta property="og:description" content="Geef jouw feedback aan ander JNM leden"/>
   <meta property="og:image" content="/static/favicon.ico" />
 
   <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
@@ -107,14 +107,57 @@ let people =
 
 let local_storage_key = "{{.Key}}";
 
-let global_all_data = {
+let context = {
  initialized: false,
  token: null,
  thisName: null,
- thisWishlist: null,
+ thisFeedback: null,
  otherName: null,
- otherWishlist: null,
+ otherFeedback: null,
 };
+
+//- Text
+let text_no = "Nee";
+let text_yes = "Ja";
+let text_back = "terug";
+let text_save = "saven";
+let text_saved = "gesaved";
+let text_login = "log in";
+let text_name = "Naam";
+let text_code = "Code";
+let text_who_are_you = "Wie ben je?";
+let text_give_feedback = "Feedback geven";
+let text_my_feedback = "Mijn feedback";
+let text_pincode = "PIN code";
+let text_info = "Info:";
+let text_empty = "Leeg...";
+let text_infos = ["blah", "blah", "blah", "blah"];
+
+function text_feedback_title()
+{
+	return `Feedback van&nbsp;<span class="name">${context.thisName}</span>`;
+}
+
+function text_my_feedback_title()
+{
+			return `<span class="name">Jouw</span>&nbsp;feedback`;
+}
+
+function text_their_feedback_title()
+{
+	return `Je hebt&nbsp;<span class="name">${context.otherName}</span>`;
+}
+
+function text_get_infos()
+{
+	let result = "";
+	for(let index = 0; index < text_infos.length; index += 1)
+	{
+		result += "<li>" + text_infos[index] + "</li>";
+	}
+
+	return result;
+}
 
 //- Helpers
 function findPersonByName(picking_person_name) {
@@ -142,16 +185,16 @@ function setPageChoose() {
 		<div id="pin-login">
 			<form>
 				<fieldset role="group">
-					<input id="${pinLoginNameID}" type="text" placeholder="Nom">
-					<input id="${pinLoginCodeID}" type="text" placeholder="Code">
-					<input id="${pinLoginButtonID}" type="submit" value="connecter">
+					<input id="${pinLoginNameID}" type="text" placeholder="${text_name}">
+					<input id="${pinLoginCodeID}" type="text" placeholder="${text_code}">
+					<input id="${pinLoginButtonID}" type="submit" value="${text_login}">
 				</fieldset>
 			</form>
 		</div>
 
 		<div class="centered">
 			<div class="container">
-				<h1>Qui es-tu?</h1>
+				<h1>${text_who_are_you}</h1>
 				<div class="buttons"></div>
 			</div>
 		</div>
@@ -177,10 +220,10 @@ function setPageChoose() {
     document.body.innerHTML = `
 					<div class="centered">
 						<div class="container">
-							<h1>Tu es bien ${thisPerson.name}?</h1>
+							<h1>Ben je wel ${thisPerson.name}?</h1>
 							<div class="buttons">
-								<button id="yes">Oui</button>
-								<button id="no">Non</button>
+						<button id="yes">${text_yes}</button>
+						<button id="no">${text_no}</button>
 							</div>
 						</div>
 					</div>`;
@@ -202,14 +245,14 @@ function setPageChoose() {
           return response.json();
       })
       .then(function(response) {
-       global_all_data.token = response.Token;
-       global_all_data.thisName = thisPerson.name;
-       global_all_data.thisWishlist = response.ThisWishlist;
-       global_all_data.otherName = response.OtherName;
-       global_all_data.otherWishlist = response.OtherWishlist;
-       global_all_data.initialized = true;
+       context.token = response.Token;
+       context.thisName = thisPerson.name;
+       context.thisFeedback = response.ThisFeedback;
+       context.otherName = response.OtherName;
+       context.otherFeedback = response.OtherFeedback;
+       context.initialized = true;
 
-       localStorage.setItem(local_storage_key, JSON.stringify(global_all_data));
+       localStorage.setItem(local_storage_key, JSON.stringify(context));
        })
       .catch(function(error) {
           console.error('There was a problem with the fetch operation:', error);
@@ -267,14 +310,14 @@ function setPageChoose() {
 			return response.json();
 		})
 		.then(function(response) {
-				global_all_data.token = response.Token;
-				global_all_data.thisName = name;
-				global_all_data.thisWishlist = response.ThisWishlist;
-				global_all_data.otherName = response.OtherName;
-				global_all_data.otherWishlist = response.OtherWishlist;
-				global_all_data.initialized = true;
+				context.token = response.Token;
+				context.thisName = name;
+				context.thisFeedback = response.ThisFeedback;
+				context.otherName = response.OtherName;
+				context.otherFeedback = response.OtherFeedback;
+				context.initialized = true;
 
-				localStorage.setItem(local_storage_key, JSON.stringify(global_all_data));
+				localStorage.setItem(local_storage_key, JSON.stringify(context));
 
 				setPageThisPerson();
 		})
@@ -286,16 +329,15 @@ function setPageChoose() {
 function setPageOtherPerson() {
 	history.pushState({home: "/"}, "", "/");
 
- let wishlistID = "wishlist";
+ let feedbackID = "feedback";
 	let backButtonID = "back";
 
  document.body.innerHTML = `
   <div class="container">
-			<h1>Tu as&nbsp;<span class="name">${global_all_data.otherName}</span>.</h1>
-			<h4>Sa liste des souhaits:</h4>
-			<textarea readonly rows="15" cols="40" id="${wishlistID}" placeholder="Vide..."></textarea>
+			<h1>${text_my_feedback_title()}</h1>
+			<textarea readonly rows="15" cols="40" id="${feedbackID}" placeholder="${text_empty}"></textarea>
 			<div class="buttons">
-				<button id="${backButtonID}">retour</button>
+			<button id="${backButtonID}">${text_back}</button>
 			</div>
   </div>
   `;
@@ -307,10 +349,10 @@ function setPageOtherPerson() {
 		setPageThisPerson();
 	});
 
- let wishlist = document.getElementById(wishlistID);
- wishlist.value = global_all_data.otherWishlist;
+ let feedback = document.getElementById(feedbackID);
+ feedback.value = context.otherFeedback;
 
-	fetch(`/api/list/?user=${global_all_data.thisName}&name=${global_all_data.otherName}&token=${global_all_data.token}`)
+	fetch(`/api/list/?user=${context.thisName}&name=${context.otherName}&token=${context.token}`)
  .then(function(response) {
      if (!response.ok) {
          console.error('Network response was not ok');
@@ -318,11 +360,11 @@ function setPageOtherPerson() {
      return response.text();
  })
  .then(function(response) {
-  if(wishlist.value != response)
+  if(feedback.value != response)
   {
-   global_all_data.otherWishlist = response;
-   wishlist.value = response;
-   localStorage.setItem(local_storage_key, JSON.stringify(global_all_data));
+   context.otherFeedback = response;
+   feedback.value = response;
+   localStorage.setItem(local_storage_key, JSON.stringify(context));
   }
  })
  .catch(function(error) {
@@ -333,28 +375,25 @@ function setPageOtherPerson() {
 
 function setPageThisPerson() {
  let showPersonButtonID = "show-person";
- let wishlistButtonID = "write-wishlist";
+ let feedbackButtonID = "write-feedback";
  let getPinButtonID = "get-pin";
  let pinTextID = "pin-text";
 
  document.body.innerHTML = `
   <div class="centered">
 			<div class="container">
-				<h1>Noël-An de&nbsp;<span class="name">${global_all_data.thisName}</span></h1>
+			<h1>${text_feedback_title()}</h1>
 				<div class="buttons">
-					<button id="${showPersonButtonID}">Voir qui j'ai choisi</button>
-					<button id="${wishlistButtonID}">Ma liste des souhaits</button>
-					<button id="${getPinButtonID}">Code PIN</button>
+					<button id="${showPersonButtonID}">${text_my_feedback}</button>
+					<button id="${feedbackButtonID}">${text_give_feedback}</button>
+					<button id="${getPinButtonID}">${text_pincode}</button>
 	    <div class="pin-text-container">
 						<span id="${pinTextID}"></span>
 		   </div>
 				</div>
-				<h4><b>Infos:</b></h4>
+				<h4><b>${text_info}</b></h4>
 				<ul>
-					<li>Ne dévoilez à persone qui vous avez tiré au sort!</li>
-					<li>Vous pouvez écrire une liste de souhaits, la personne ayant tiré votre nom y a accès.</li>
-					<li>Il n'est pas obligé de respecter la liste ou d'en écrire une. Elle sert pour inspirer des idées de cadeaux.</li>
-					<li>Si vous avez un soucis n'hésitez-pas à me contacter !</li>
+					${text_get_infos()}
 				</ul>
 			</div>
   </div>
@@ -364,7 +403,7 @@ function setPageThisPerson() {
 	getPinButton.addEventListener("click", function(event) {
 		event.preventDefault();
 		
-		fetch(`/api/pin/?name=${global_all_data.thisName}&token=${global_all_data.token}`)
+		fetch(`/api/pin/?name=${context.thisName}&token=${context.token}`)
 		.then(function(response) {
 			if (!response.ok) {
 							console.error('Network response was not ok');
@@ -387,23 +426,23 @@ function setPageThisPerson() {
   setPageOtherPerson();
  });
 
- let writeWishlistButton = document.getElementById(wishlistButtonID);
- writeWishlistButton.addEventListener("click", async function(event) {
+ let writeFeedbackButton = document.getElementById(feedbackButtonID);
+ writeFeedbackButton.addEventListener("click", async function(event) {
   event.preventDefault();
 
 		history.pushState({home: "/"}, "", "/");
 
-  let sendWishlistButtonID = "send-wishlist";
-  let wishlistTextAreaID = "wishlist-text";
+  let sendFeedbackButtonID = "send-feedback";
+  let feedbackTextAreaID = "feedback-text";
 		let backButtonID = "back";
 
   document.body.innerHTML = `
    <div class="container">
-			<h1><span class="name">Ma</span>&nbsp;liste des souhaits</h1>
-    <textarea id="${wishlistTextAreaID}" rows="15" cols="40" placeholder="Vide..."></textarea>
+			<h1>${text_their_feedback_title()}</h1>
+			<textarea id="${feedbackTextAreaID}" rows="15" cols="40" placeholder="${text_empty}"></textarea>
     <div class="buttons">
-			  <button id="${backButtonID}">retour</button>
-     <button id="${sendWishlistButtonID}">sauvegarder</button>
+				<button id="${backButtonID}">${text_back}</button>
+				<button id="${sendFeedbackButtonID}">${text_save}</button>
     </div>
    </div>
    `;
@@ -415,10 +454,10 @@ function setPageThisPerson() {
 				setPageThisPerson();
 			});
 
-   let wishlist = document.getElementById(wishlistTextAreaID);
-   wishlist.value = global_all_data.thisWishlist;
+   let feedback = document.getElementById(feedbackTextAreaID);
+   feedback.value = context.thisFeedback;
 
-			await fetch(`/api/list/?user=${global_all_data.thisName}&name=${global_all_data.thisName}&token=${global_all_data.token}`)
+			await fetch(`/api/list/?user=${context.thisName}&name=${context.thisName}&token=${context.token}`)
 			.then(function(response) {
 							if (!response.ok) {
 											console.error('Network response was not ok');
@@ -429,38 +468,38 @@ function setPageThisPerson() {
 				{{ if .Internal }}
 				console.log("response:", response);
 				console.log(typeof(response));
-				console.log("wishlist.value:", wishlist.value);
-				console.log(typeof(wishlist.value));
-				console.log("wishlist.value === response:", wishlist.value === response);
+				console.log("feedback.value:", feedback.value);
+				console.log(typeof(feedback.value));
+				console.log("feedback.value === response:", feedback.value === response);
 				{{ end }}
 
-				if(wishlist.value !== response)
+				if(feedback.value !== response)
 				{
-					global_all_data.thisWishlist = response;
-					wishlist.value = response;
-					localStorage.setItem(local_storage_key, JSON.stringify(global_all_data));
+					context.thisFeedback = response;
+					feedback.value = response;
+					localStorage.setItem(local_storage_key, JSON.stringify(context));
 				}
 			})
 			.catch(function(error) {
 							console.error('There was a problem with the fetch operation:', error);
 			});
 
-   let sendWishlistButton = document.getElementById(sendWishlistButtonID);
-   sendWishlistButton.addEventListener("click", function(event) {
+   let sendFeedbackButton = document.getElementById(sendFeedbackButtonID);
+   sendFeedbackButton.addEventListener("click", function(event) {
     event.preventDefault();
 
 				{{ if .Internal }}
-    console.log("Sending list of", global_all_data.thisName);
-				console.log("content:", wishlist.value);
+    console.log("Sending list of", context.thisName);
+				console.log("content:", feedback.value);
 				{{ end }}
 
-    global_all_data.thisWishlist = wishlist.value;
-    localStorage.setItem(local_storage_key, JSON.stringify(global_all_data));
+    context.thisFeedback = feedback.value;
+    localStorage.setItem(local_storage_key, JSON.stringify(context));
 
     let messageBody = {
-     name: global_all_data.thisName,
-     token: global_all_data.token,
-     text: wishlist.value,
+     name: context.thisName,
+     token: context.token,
+     text: feedback.value,
     };
     const postBody = new URLSearchParams(messageBody).toString();
 
@@ -476,7 +515,7 @@ function setPageThisPerson() {
      response.text().
       then(function(text_response) {
         const textElement = document.createElement('div');
-        textElement.textContent = 'Sauvegardé';
+        textElement.textContent = text_saved;
         textElement.classList.add('fade');
         let buttons = document.querySelector("div.buttons");
         buttons.appendChild(textElement);
@@ -488,7 +527,7 @@ function setPageThisPerson() {
      .catch(function(error) { console.error('Error:', error); });
 
    }); // add event listener send button
- }); // add event listener write wishlist
+ }); // add event listener write feedback
 }
 
 //- Main
@@ -508,8 +547,8 @@ window.onload = function() {
  else
  {
   let data_parsed = JSON.parse(all_data);
-  global_all_data = data_parsed;
-  console.log(global_all_data);
+  context = data_parsed;
+  console.log(context);
 
   setPageThisPerson();
  }
