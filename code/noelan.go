@@ -495,7 +495,6 @@ func Run() {
 
 				if found {
 					logger.Println("Edit wishlist of", name)
-					fmt.Printf("text: %#v\n", text)
 					person.Wishlist = text
 
 					fmt.Fprintln(writer, "ok")
