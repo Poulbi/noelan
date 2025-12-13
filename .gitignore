@@ -1,8 +1,7 @@
-tmp/
-gobs/
-
-noelan
-people.gob
-
+tmp
 code/people.go
+noelan
 
+# For rsync
+.git
+.gitignore

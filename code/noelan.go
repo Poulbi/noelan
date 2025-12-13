@@ -1,7 +1,7 @@
 // Documentation
 //
 // Secret santa app that's random so people don't have to worry about the picking process.
-// No emails or login, just use the domain.
+// No emails, no login, no cookies, just use the domain.
 //
 // Run it with `go run .`
 //
@@ -10,31 +10,23 @@
 // - Scan backups folder, find duplicates and deduplicate them?
 // - non-issue if compressed?
 //
-// TODO(luca): Different devices support:
-// - People want to access the app from multiple devices
-// - There must be an easier way to do this than copy a 16digit long token (which they need)
-//
-// - One-Time-Code, generated from logged in device
-//   - To prevent people from hacking it: -> if one wrong code is sent a new one must be requested
-//   - Has the same effect as `/choose` on another device
-//
-// TODO(luca): If someone's want to access from another device his wishlist won't be synced,
-// so we must provide a way to get your own wishlist.
-//
+// TODO(luca): Permalink
 // TODO(luca): Reimplement missing features.
 // Since we only have one page we lose following functionality of the browser.
 // - native navigation through history of urls
 // - control+click to open in a new page
 //
+// TODO(luca): '/stupid' route for scrapers & robots.txt
+//
 // x In PageData that is sent to the client, only send people's name who have not clicked yet.
 // x Synchronization for your own wishlist
-//
-// TODO(luca): No backup option
-// TODO(luca): Offline mode
-// - detect when you are offline
-// - display a tooltip saying that you are offline
-// TODO(luca): Remove names from here and add them through a config file
-// TODO(luca): Stupid / for scrapers & robots.txt
+// x Remove names from here and add them through a config file
+// x No backup option
+// x If someone's want to access from another device his wishlist won't be synced,
+//   so we must provide a way to get your own wishlist.
+// x One-Time-Code, generated from logged in device
+//   x To prevent people from hacking it: -> if one wrong code is sent a new one must be requested
+//   x Has the same effect as `/choose` on another device
 
 package noelan
 

@@ -14,6 +14,9 @@ TODO(luca): Get rid of PicoCSS, because it does not make a good responsive UI.
 
 TODO(luca): Check error messages maybe sending too much information. (e.g., "invalid person" can be bruteforced to find the person's names)
 
+TODO(luca): Offline mode
+- detect when you are offline
+- display a tooltip saying that you are offline
 -->
 {{ end }}
 <html lang="fr" data-theme="dark">
@@ -153,6 +156,11 @@ function setPageChoose() {
 			<div class="container">
 				<h1>Qui es-tu?</h1>
 				<div class="buttons"></div>
+				<h4><b>Infos:</b></h4>
+				<ul>
+					<li>Choisissez votre nom. S'il n'apparait pas ici au-dessus, contactez votre administrateur</li>
+					<li>Votre compte est lié à votre appareil, pour liez un nouvel appareil il vous faut utuliser le Code PIN.</li>
+				</ul>
 			</div>
 		</div>
   `;
@@ -354,8 +362,8 @@ function setPageThisPerson() {
 					<li>Ne dévoilez à persone qui vous avez tiré au sort!</li>
 					<li>Vous pouvez écrire une liste de souhaits, la personne ayant tiré votre nom y a accès.</li>
 					<li>Il n'est pas obligé de respecter la liste ou d'en écrire une. Elle sert pour inspirer des idées de cadeaux.</li>
+					<li>Le budget est de plus ou moins 50 euros.</li>
 					<li>Si vous avez un soucis n'hésitez-pas à me contacter !</li>
-		   <li>Vous pouvez lier un autre appareil à ce compte par le code PIN</li>
 				</ul>
 			</div>
   </div>
